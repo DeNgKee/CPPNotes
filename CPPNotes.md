@@ -645,9 +645,24 @@ int main()
 
   > *This embedded class is the type returned by members of non-const [vector](http://www.cplusplus.com/vector) when directly accessing its elements. It accesses individual bits with an interface that emulates a reference to a `bool`.*
 
-  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的，这个需要注意。
+  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的。如果我们试图用auto&来定义一个vector<bool>::operator[]返回的值，会出现如下编译错误：
+
+  > error: invalid initialization of non-const reference of
+  >  type 'std::_Bit_reference&' from an rvalue of type 'std::_Bit_iterator::referen
+  > ce {aka std::_Bit_reference}'
+
+  这是因为对于*std::vector< bool>::reference*这种*proxy reference*来说，我们对其dereference并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决vector<bool>想遍历修改的问题，右值引用对vector<T>的其他类型同样适用：
+
+  ```cpp
+  vector<bool> v = {true, false, false, true};
+  // Invert boolean status
+  for (auto&& x : v)  // <-- note use of "auto&&" for proxy iterators
+      x = !x;
+  ```
 
 # 12.移动语义和右值引用
+
+
 
 # 13.*lambda*表达式
 
