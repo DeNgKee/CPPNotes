@@ -273,8 +273,8 @@ A(A &a)
 }
 A(A &&a)
 {
-    this->n= a.n;
-    this->n = nullptr;
+    this->n = a.n;
+    a->n = nullptr;
     cout << "A move construction" << endl;
 }
 A& operator=(A &a)
@@ -287,7 +287,7 @@ A& operator=(A &a)
 A& operator=(A &&a)
 {
     this->n = a.n;
-    this->n = nullptr;
+    a->n = nullptr;
     cout << "A move assignment construction" << endl;
     return *this;
 }
@@ -312,7 +312,7 @@ int *n;
 
 + 3) 移动构造函数传入形参为对象的右值引用，将赋值对象使用*move*函数强转成右值引用之后再进行如同拷贝构造函数的调用方式时会调用移动构造函数。
 
-+ 4) 函数返回对象会先将局部对象赋给一个临时变量，此时有限调用移动构造函数，等局部变量析构后再将临时对象赋给函数外的对象，最后再将临时对象析构。
++ 4) 函数返回对象会先将局部对象赋给一个临时变量，由于函数返回值为右值，所以此时调用的是移动构造函数，等局部变量析构后再将临时对象赋给函数外的对象，最后再将临时对象析构。
 
 + 5) 析构函数在对象到达生命周期时会自动调用，比如局部对象在函数结束时，对象指针被*delete*时。通过这种特性我们可以实现*RAII(resource acquisition is initialization)*，比如*c++11*中的*mutex_guard*:
 
@@ -662,7 +662,59 @@ int main()
 
 # 12.移动语义和右值引用
 
+在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的A &&a即为右值引用，当我们使用move函数将变量转换成右值引用之后再进行构造函数便会调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成nullptr：
 
+```cpp
+A(A &&a)
+{
+    this->n = a.n;
+    a->n = nullptr;
+    cout << "A move construction" << endl;
+}
+```
+
+右值引用使*C++*标准库的实现在多种场景下消除了不必要的额外开销（如*std::vector*,*std::string*），也使得另外一些标准库（如*std::unique_ptr*,*std::function*）成为可能。右值引用的意义通常为两大作用：移动语义和完美转发。移动语义即为上述所示的移动构造函数，*std::vector*和*std::string*也可以通过移动构造函数来构造，这样就避免了重新给vetor或者string分配空间的开销：
+
+```cpp
+std::vector<int> vec(100,1);
+std::vector<int> vec1 = move(vec);
+```
+
+而对于模板函数来说，`void func(T&& param)`其中的*T&&*并不一定表示的是右值，它绑定的类型是未知的，既可能是右值，也可能是左值，需要类型推导之后才会知道，比如：
+
+```cpp
+template<typename T>
+void func(T&& param){}
+func(10); // 10是右值
+int x = 10;
+func(x);  // x是左值
+```
+
+这种未定的引用类型称为万能引用(*universal reference*)，这种类型必须被初始化，具体是什么类型取决于它的初始化。由于存在*T&&*这种未定的引用类型，当它作为参数时，有可能被一个左值引用或右值引用的参数初始化，这是经过类型推导的*T&&*类型，相比右值引用(*&&*)会发生类型的变化，这种变化就称为引用折叠，引用折叠规则如下：
+
+* 1.所有右值引用折叠到右值引用上仍然是一个右值引用。（T&& && 变成 T&&）
+* 2.所有的其他引用类型之间的折叠都将变成左值引用。 （T& & 变成 T&; T& && 变成 T&; T&& & 变成 T&）
+
+对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward<T>()*。如果传进来的参数是一个左值，enter函数会将T推导为T&，forward会实例化为forward<T&>，T& &&通过引用折叠会成为T&，所以传给func函数的还是左值；如果传进来的是一个右值，enter函数会将T推导为T，forward会实例化为forward<T>，T&&通过引用折叠还是T&&，所以传给func函数的还是右值：
+
+``` cpp
+template<typename T>
+T&& forward(typename remove_reference<T>::type& param)
+{
+    return static_cast<T&&>(param); //会发生引用折叠
+}
+
+template <typename T>
+void func(T t) {
+    cout << "in func " << endl;
+}
+
+template <typename T>
+void enter(T&& t) {
+    cout << "in enter " << endl;
+    func(std::forward<T>(t));
+}
+```
 
 # 13.*lambda*表达式
 
