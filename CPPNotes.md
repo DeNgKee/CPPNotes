@@ -549,23 +549,23 @@ int main()
 
 # 11.*auto*
 
-* 对于auto而言，其意义在于type deduce，所以它不会允许没有初始化的声明，这样对于开发者来说是一个很好的习惯；
+* 对于*auto*而言，其意义在于*type deduce*，所以它不会允许没有初始化的声明，这样对于开发者来说是一个很好的习惯；
 
 * 另外一个意义是简化代码，尤其是经常使用容器迭代器初始化；
 
-* 如果想保存lambda表达式，不需要自己推导一个函数指针或者function类型变量，直接使用auto即可；
+* 如果想保存*lambda*表达式，不需要自己推导一个函数指针或者*function*类型变量，直接使用*auto*即可；
 
   ```cpp
   auto closure = [](const int&, const int&) {}
   ```
 
-* 在C++14的泛型lambda表达式中，我们还可以将参数定义成auto类型，通过这个我们可以实现ChurchNumber，后续在13章作介绍；
+* 在*C++14*的泛型*lambda*表达式中，我们还可以将参数定义成*auto*类型，通过这个我们可以实现*ChurchNumber*，后续在13章作介绍；
 
   ``` cpp
   auto closure = [](auto x, auto y) { return x * y;}
   ```
 
-* 在C++1X中，配合decltype可以解决原来难以让编译器自动推导模板函数返回值的问题，原来我们需要先转换成万能的0，再转成指针，最后再取指针：
+* 在*C++1X*中，配合*decltype*可以解决原来难以让编译器自动推导模板函数返回值的问题，原来我们需要先转换成万能的0，再转成指针，最后再取指针：
 
   ```cpp
   template<class T,class U>
@@ -575,7 +575,7 @@ int main()
   }
   ```
 
-  C++11可以直接这样：
+  *C++11*可以直接这样：
 
   ```cpp
   template<class T,class U>
@@ -585,7 +585,7 @@ int main()
   }
   ```
 
-  而在C++14中我们可以直接这样：
+  而在*C++14*中我们可以直接这样：
 
   ```cpp
   template<class T,class U>
@@ -595,9 +595,57 @@ int main()
   }
   ```
 
-  其中的auto在编译时会替换成函数返回的表达式，再通过decltype来推导其类型。
+  其中的*auto*在编译时会替换成函数返回的表达式，再通过*decltype*来推导其类型。
 
-* auto有时候可能得不到我们预想的类型，其实主要是因为基础不够扎实，比如vector<bool>
+* 当不声明为引用类型时，*auto*的初始化表达式即使是引用，编译器也并不会将该变量推导为对应类型的引用，*auto*的推导结果等同于初始化表达式去除引用和*const qualifier*，所以在实际编码中我们需要显示的声明引用和指针。当声明为引用或指针时*auto*的推导结果能推导出正确的类型，其结果能保留初始化表达式的*qualifier*：
+
+  ```cpp
+  #include <iostream>
+  using namespace std;
+  int main()
+  {
+      int x = 0;
+      auto *a = &x;//类型为int*，auto为int
+      ++(*a);
+      cout << "after ++(*a) *a:" << *a << " x:" << x << endl;
+      auto b = &x;//类型为int*，auto为int*
+      ++(*b);
+      cout << "after ++(*b) *b:" << *b << " x:" << x << endl;
+      auto &c = x;//类型为int&，auto为int
+      ++c;
+      cout << "after ++c c:" << c << " x:" << x << endl;
+      auto d = c;//类型为int，auto为int
+      ++d;
+      cout << "after ++d d:" << d << " x:" << x << endl;
+  
+      const auto e = x;//类型为const int，auto为int
+      //++e; error C3892: “e”: 不能给常量赋值
+      auto f = e;//类型为int，auto为int
+      ++f;
+      cout << "after ++f f:" << f << " x:" << x << endl;
+      const auto &g = x;//类型为const int&，auto为int
+      //++g; error C3892: “g”: 不能给常量赋值
+      auto& h = g;//推导为const int&,auto为const int
+      //++h; error C3892: “g”: 不能给常量赋值
+      auto *i = &e; //推导为 const int*，常量指针，不能改变指针指向的内容
+      //++(*i);  error C3892: “i”: 不能给常量赋值
+      auto j = i;
+      //++(*j); error C3892: “j”: 不能给常量赋值
+      return 0;
+  }
+  ```
+
+* *auto*有时候可能得不到我们预想的类型，其实主要是因为基础不够扎实，比如*vector<bool>*。*vector<bool>*是*vector<T>*的一个特例化(*template specialization*)，这个特例化要解决的问题是存储容量的问题。
+
+  *To optimize space allocation, a specialization of vector for bool elements is provided.*
+
+  所以，它一般来说是以位的方式来存储*bool*的值。从这里我们可以看出，如果使用位来提升空间效率可能引出的问题就是时间效率了，因为我们的计算机地址是以字节为单位的，根据网友的实验遍历访问*vector<bool>*要比其他*vector<int>*耗时40倍以上。
+
+  对于*vector<bool>*来说，它的*operator[]*返回的不是对应元素的引用，而是一个*member class std::vector< bool>::reference* 。对于普通*vector<T>*来说，若是使用*auto*声明变量对保存*opertor[]*返回的值，会如同上一段所说的去除引用，而对于*vector<bool> operator*返回的*std::vector< bool>::reference*是一个*member class*：
+
+  > *This embedded class is the type returned by members of non-const [vector](http://www.cplusplus.com/vector) when directly accessing its elements. It accesses individual bits with an interface that emulates a reference to a `bool`.*
+
+  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的，这个需要注意。
 
 # 12.移动语义和右值引用
 
