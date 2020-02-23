@@ -645,13 +645,13 @@ int main()
 
   > *This embedded class is the type returned by members of non-const [vector](http://www.cplusplus.com/vector) when directly accessing its elements. It accesses individual bits with an interface that emulates a reference to a `bool`.*
 
-  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的。如果我们试图用auto&来定义一个vector<bool>::operator[]返回的值，会出现如下编译错误：
+  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的。如果我们试图用*auto&*来定义一个*vector<bool>::operator[]*返回的值，会出现如下编译错误：
 
   > error: invalid initialization of non-const reference of
   >  type 'std::_Bit_reference&' from an rvalue of type 'std::_Bit_iterator::referen
   > ce {aka std::_Bit_reference}'
 
-  这是因为对于*std::vector< bool>::reference*这种*proxy reference*来说，我们对其dereference并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决vector<bool>想遍历修改的问题，右值引用对vector<T>的其他类型同样适用：
+  这是因为对于*std::vector< bool>::reference*这种*proxy reference*来说，我们对其*dereference*并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决*vector<bool>*想遍历修改的问题，右值引用对*vector<T>*的其他类型同样适用：
 
   ```cpp
   vector<bool> v = {true, false, false, true};
@@ -662,7 +662,7 @@ int main()
 
 # 12.移动语义和右值引用
 
-在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的A &&a即为右值引用，当我们使用move函数将变量转换成右值引用之后再进行构造函数便会调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成nullptr：
+在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造函数便会调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
 
 ```cpp
 A(A &&a)
@@ -692,10 +692,10 @@ func(x);  // x是左值
 
 这种未定的引用类型称为万能引用(*universal reference*)，这种类型必须被初始化，具体是什么类型取决于它的初始化。由于存在*T&&*这种未定的引用类型，当它作为参数时，有可能被一个左值引用或右值引用的参数初始化，这是经过类型推导的*T&&*类型，相比右值引用(*&&*)会发生类型的变化，这种变化就称为引用折叠，引用折叠规则如下：
 
-* 1.所有右值引用折叠到右值引用上仍然是一个右值引用。（T&& && 变成 T&&）
-* 2.所有的其他引用类型之间的折叠都将变成左值引用。 （T& & 变成 T&; T& && 变成 T&; T&& & 变成 T&）
+* 1.所有右值引用折叠到右值引用上仍然是一个右值引用。（*T&& && *变成 *T&&*）
+* 2.所有的其他引用类型之间的折叠都将变成左值引用。 （*T& &* 变成 *T&*; *T& &&* 变成 *T&*; *T&& &* 变成 *T&*）
 
-对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward<T>()*。如果传进来的参数是一个左值，enter函数会将T推导为T&，forward会实例化为forward<T&>，T& &&通过引用折叠会成为T&，所以传给func函数的还是左值；如果传进来的是一个右值，enter函数会将T推导为T，forward会实例化为forward<T>，T&&通过引用折叠还是T&&，所以传给func函数的还是右值：
+对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward<T>()*。如果传进来的参数是一个左值，*enter*函数会将T推导为*T&*，*forward*会实例化为*forward<T&>*，*T& &&*通过引用折叠会成为*T&*，所以传给*func*函数的还是左值；如果传进来的是一个右值，*enter*函数会将*T*推导为*T*，*forward*会实例化为*forward<T>*，*T&&*通过引用折叠还是*T&&*，所以传给*func*函数的还是右值：
 
 ``` cpp
 template<typename T>
