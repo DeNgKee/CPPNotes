@@ -718,6 +718,78 @@ void enter(T&& t) {
 
 # 13.*lambda*表达式
 
+*lambda*表达式对于*C++*的意义有两条：
+
+* 第一条是可以在表达式中直接定义一个函数，而不需要将定义函数和表达式分开。
+* 第二条是引入了闭包。闭包是指将当前作用域中的变量通过值或者引用的方式封装到*lambda*表达式当中，成为表达式的一部分，它使*lambda*表达式从一个普通的函数变成一个带隐藏参数的函数。
+
+基本语法我们在函数章节有所介绍：
+
+```cpp
+[capture list] (params list) -> return type {function body};
+```
+
+[]中我们可以定义好闭包变量的捕获方式：
+
+```cpp
+[]        //未定义变量.试图在Lambda内使用任何外部变量都是错误的.
+[x, &y]   //x 按值捕获, y 按引用捕获.
+[&]       //用到的任何外部变量都隐式按引用捕获
+[=]       //用到的任何外部变量都隐式按值捕获
+[&, x]    //x显式地按值捕获. 其它变量按引用捕获
+[=, &z]   //z按引用捕获. 其它变量按值捕获
+```
+
+()中我们定义了需要直接直接传入*lambda*表达式的形参；
+
+->之后我们定义的是返回值类型，当然我们可以将其隐藏，编译器会根据 *return*表达式进行类型推导。除了返回值可以类型推导，在*C++14*中我们使用generic lambda还能对形参进行类型推导；
+
+通过闭包和返回值以及形参的类型推导我们可以进行函数式编程，比方说构造*Church Number*：
+
+```cpp
+#include <iostream>
+using namespace std;
+//定义0函数
+auto zero = [](auto f){
+    return [=](auto x){
+        return x;
+    };
+};
+//定义后继函数
+auto succ = [](auto num){
+    return [=](auto f){
+        return [=](auto x){
+        	return f(num(f)(x));
+        };
+    };
+};
+//定义加法函数
+auto add = [](auto m, auto n){
+    return [=](auto f){
+        return [=](auto x){
+            return m(f)(n(f)(x));
+        };
+    };
+};
+//定义乘法函数
+auto mul = [](auto m, auto n){
+    return [=](auto f){
+        return [=](auto x){
+            return m(n(f))(x);
+        };
+    };
+};
+int main()
+{
+    auto two = succ(one);//通过后继函数得到2
+    auto three = add(one, two);//通过加法函数得到3
+    auto six = mul(two, three);//通过乘法函数得到6
+    auto f = [](auto x){cout<<"x:"<<x<<endl; return x+1;}//为了能具象数字，我们定义f
+    six(f)(0);
+    return 0;
+}
+```
+
 # 14.智能指针
 
 # 15.算法增强
