@@ -171,6 +171,12 @@ cout<<”mc.count=”<<mc.count<<endl;
 
 *C++*通过*name mangling*来实现函数重载，以及域名空间等作用域的功能。
 
+子类不能重载父类的函数，子类父类属于不同的域名空间，如果基类声明被重载了，则应该在派生类中重新定义所有的基类版本。如果在派生类中只重新定义一个版本，其他版本将会被隐藏，派生类对象将无法使用它们。简而言之，重新定义函数，并不是重载。在派生类中定义函数，将不是使用相同的函数特征标覆盖基类声明，而是隐藏同名的基类方法，不管参数的特征标如何。如果我们需要在子类中使用所有父类定义的某个函数但又不想重写，可以使用如下方法：
+
+```cpp
+using A::print;
+```
+
 # 6.类
 
 在*C++*中，结构体是由关键词*struct*定义的一种数据类型。他的成员和基类默认为公有的（*public*）。由关键词*class*定义的成员和基类默认为私有的（*private*）。这是*C++*中结构体和类仅有的区别。
@@ -662,7 +668,7 @@ int main()
 
 # 12.移动语义和右值引用
 
-在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造函数便会调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
+在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造或者直接使用右值进行构造都会触发调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
 
 ```cpp
 A(A &&a)
@@ -676,6 +682,13 @@ A(A &&a)
 右值引用使*C++*标准库的实现在多种场景下消除了不必要的额外开销（如*std::vector*,*std::string*），也使得另外一些标准库（如*std::unique_ptr*,*std::function*）成为可能。右值引用的意义通常为两大作用：移动语义和完美转发。移动语义即为上述所示的移动构造函数，*std::vector*和*std::string*也可以通过移动构造函数来构造，这样就避免了重新给vetor或者string分配空间的开销：
 
 ```cpp
+template<typename T> 
+decltype(auto) move(T&& param) 
+{ 
+	using ReturnType = remove_reference_t<T>&&; 
+	return static_cast<ReturnType>(param); 
+
+}
 std::vector<int> vec(100,1);
 std::vector<int> vec1 = move(vec);
 ```
@@ -792,5 +805,165 @@ int main()
 
 # 14.智能指针
 
-# 15.算法增强
+智能指针是在普通指针的基础上封装了一层*RAII*机制，这样一层封装机制的目的是为了使得指针可以方便的管理一个对象的生命周期。在程序员难以判断指针需要在什么时候释放，忘记释放，或者抛出异常时能安全的将内存释放。
 
+智能指针分为四种：*auto_ptr*（摒弃），*unique_ptr*，*shared_ptr*和*weak_ptr*。旧的*auto_ptr*在对新的*auto_ptr*进行复制构造了之后旧的便会失效，而*unique_ptr*在*auto_ptr*的基础上禁止了复制构造，但是可以使用移动语义转移所有权：
+
+```cpp
+unique_ptr<int> up(new int);
+unique_ptr<int> up1(ap); //error
+unique_ptr<int> up2 = ap; //error
+unique_ptr<int> GetVal( ){
+    unique_ptr<int> up(new int);
+    return up;
+}
+unique_ptr<int> uP3 = GetVal(); //ok
+unique_ptr<int> uP4 = move(up); //ok
+```
+
+*shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。
+
+在实际使用*shared_ptr*的过程中我们不可避免的会出现循环引用的情况，比如下面这种情况：
+
+```cpp
+class ClassB;
+class ClassA
+{
+public:
+    ClassA() { cout << "ClassA Constructor..." << endl; }
+    ~ClassA() { cout << "ClassA Destructor..." << endl; }
+    shared_ptr<ClassB> pb;  // 在A中引用B
+};
+
+class ClassB
+{
+public:
+    ClassB() { cout << "ClassB Constructor..." << endl; }
+    ~ClassB() { cout << "ClassB Destructor..." << endl; }
+    shared_ptr<ClassA> pa;  // 在B中引用A
+};
+
+int main() {
+    shared_ptr<ClassA> spa = make_shared<ClassA>();
+    shared_ptr<ClassB> spb = make_shared<ClassB>();
+    spa->pb = spb;
+    spb->pa = spa;
+    return 0;
+}
+```
+
+这时候我们就需要用到*weak_ptr*。*weak_ptr*是为了配合*shared_ptr*引入的一种智能指针，它指向一个由*shared_ptr*管理的对象而不影响所指对象的生命周期，也就是将一个*weak_ptr*绑定到一个*shared_ptr*不会改变*shared_ptr*的引用计数。不论是否有*weak_ptr*指向，一旦最后一个指向对象的*shared_ptr*被销毁，对象就会被释放。从这个角度看，*weak_ptr*更像是*shared_ptr*的一个助手而不是智能指针。
+
+由于*weak_ptr*访问的指针可能被释放，所以我们不能直接访问指向的内存，我们可以用成员函数*lock*来判断，如果内存未释放，则返回一个指向内存的*shared_ptr*，若释放了则返回一个值为*nullptr*的*shared_ptr*：
+
+```cpp
+class A
+{
+public:
+    A() { cout << "A Constructor..." << endl; }
+    ~A() { cout << "A Destructor..." << endl; }
+};
+
+int main() {
+    shared_ptr<A> sp(new A());
+    weak_ptr<A> wp(sp);
+    //sp.reset();
+    if (shared_ptr<A> pa = wp.lock()) {
+        cout << pa->a << endl;
+    } else {
+        cout << "wp指向对象为空" << endl;
+    }
+}
+```
+
+*shared_ptr*在*C++17*之前都不支持动态数组：
+
+```cpp
+std::shared_ptr<int[]> sp1(new int[10]()); // 错误，c++17前不能传递数组类型作为shared_ptr的模板参数
+std::unique_ptr<int[]> up1(new int[10]()); // ok, unique_ptr对此做了特化
+std::shared_ptr<int> sp2(new int[10]()); // 错误，可以编译，但会产生未定义行为
+```
+
+## 14.1 常用函数
+
+```cpp
+get(); //返回管理的裸指针
+shared_ptr<ClassName> sp(new ClassName,[](ClassName* p){delete p;});//构造函数，自定义deleter
+reset(p, Del);//重新设置维护的指针及其对应的deleter
+get_deleter();//获得智能指针的deleter
+template <class T, class... Args>
+shared_ptr<T> make_shared (Args&&... args);//相当于调用T类的构造函数，
+```
+
+## 14.2 *enable_shared_from_this*
+
+使用智能指针难以避免的场景之一就是需要把在类的成员函数里把当前类的对象作为参数传给其他异步函数，这时候需要在成员函数里获得一个管理*this*指针的shared_ptr，我们可能想要这么做：
+
+```cpp
+class Foo
+{
+public:
+    void Bar(std::function<void(Foo*)> fnCallback)
+    {
+        std::thread t(fnCallback,this).detach();
+    }
+};
+```
+
+但是我们不能保证在fnCallback异步调用的时候Foo对象没有被析构，所以我们可能想要给fnCallback回调传一个shared_ptr管理的Foo对象指针，像这样：
+
+```cpp
+class Foo
+{
+public:
+    void Bar(std::function<void(std::shared_ptr<Foo>)> fnCallback)
+    {
+        std::shared_ptr<Foo> pFoo(this);
+        std::thread t(fnCallback,pFoo).detach();
+    }
+};
+```
+
+然而这样就让两个*shared_ptr*来管理一个对象，两个*shared_ptr*不共享引用计数，各自都是1，所以仍然会让成员函数外的*shared_ptr*析构之后释放*Foo*。这时候我们就需要j继承*enable_shared_from_this*类来帮我们获得一个和外面*shared_ptr*共享引用计数的新的*shared_ptr*：
+
+```cpp
+class Foo : public enable_shared_from_this<Foo>
+{
+public:
+    void Bar(std::function<void(std::shared_ptr<Foo>)> fnCallback)
+    {
+        std::shared_ptr<Foo> pFoo = shared_from_this();
+        std::thread t(fnCallback,pFoo).detach();
+    }
+};
+```
+
+*enable_shared_from_this*中包含一个*weak_ptr*，在初始化*shared_ptr*时，构造函数会检测到这个该类派生于*enable_shared_from_this*，于是将这个*weak_ptr*指向初始化的*shared_ptr*。调用*shared_from_this*，本质上就是*weak_ptr*的一个*lock*操作。
+
+# 15.*STL*容器
+
+## 15.1 顺序容器
+
+### 15.1.1 *vector*
+
+### 15.1.2 *list*
+
+### 15.1.3 deque
+
+## 15.2 容器适配器
+
+C++提供了三种容器适配器（container adapter）：stack，queue和priority_queue。stack和queue基于deque实现，priority_queue基于vector实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器.
+
+### 15.2.1 stack
+
+### 15.2.2 queue
+
+### 15.2.3 priority_queue
+
+## 15.3 关联容器
+
+### 15.3.1 map/multimap
+
+### 15.3.2 set/multiset
+
+### 15.3.3 unordered_map
