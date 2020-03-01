@@ -905,7 +905,8 @@ class Foo
 public:
     void Bar(std::function<void(Foo*)> fnCallback)
     {
-        std::thread t(fnCallback,this).detach();
+        std::thread t(fnCallback,this);
+        t.detach();
     }
 };
 ```
@@ -919,7 +920,8 @@ public:
     void Bar(std::function<void(std::shared_ptr<Foo>)> fnCallback)
     {
         std::shared_ptr<Foo> pFoo(this);
-        std::thread t(fnCallback,pFoo).detach();
+        std::thread t(fnCallback,pFoo);
+        t.detach();
     }
 };
 ```
@@ -927,15 +929,48 @@ public:
 然而这样就让两个*shared_ptr*来管理一个对象，两个*shared_ptr*不共享引用计数，各自都是1，所以仍然会让成员函数外的*shared_ptr*析构之后释放*Foo*。这时候我们就需要j继承*enable_shared_from_this*类来帮我们获得一个和外面*shared_ptr*共享引用计数的新的*shared_ptr*：
 
 ```cpp
-class Foo : public enable_shared_from_this<Foo>
-{
+class CallbackClass : public enable_shared_from_this<CallbackClass> {
 public:
-    void Bar(std::function<void(std::shared_ptr<Foo>)> fnCallback)
-    {
-        std::shared_ptr<Foo> pFoo = shared_from_this();
-        std::thread t(fnCallback,pFoo).detach();
-    }
+	void CallCallbackFunc(std::function<void(shared_ptr<CallbackClass>)> CallbackFunc) {
+		auto sp = shared_from_this();
+		thread t(CallbackFunc,sp);
+		t.detach();
+		//t.join();
+		return;
+	}
+	CallbackClass():a(0) {
+		cout << "CallbackClass constructor" << endl;
+	}
+	~CallbackClass() {
+		cout << "CallbackClass destructor" << endl;
+	}
+	int Adda() {
+		a++;
+		return a;
+	}
+private:
+	int a;
 };
+
+void Foo()
+{
+	shared_ptr<CallbackClass> sp = make_shared<CallbackClass>();
+	sp->CallCallbackFunc([](shared_ptr<CallbackClass> sp) {
+		Sleep(100);
+		cout << "sleep 100 ms done" << endl;
+		for (int i = 0; i < 1000; ++i) {
+			cout << "a:" << sp->Adda() << endl;
+		}
+	});
+	return;
+}
+int main(int argc, char* argv[])
+{
+	Foo();
+	cout << "Foo func done" << endl;
+	system("pause");
+	return 0;
+}
 ```
 
 *enable_shared_from_this*中包含一个*weak_ptr*，在初始化*shared_ptr*时，构造函数会检测到这个该类派生于*enable_shared_from_this*，于是将这个*weak_ptr*指向初始化的*shared_ptr*。调用*shared_from_this*，本质上就是*weak_ptr*的一个*lock*操作。
@@ -946,24 +981,154 @@ public:
 
 ### 15.1.1 *vector*
 
+*vector<bool>*为该模板类的特例化，我们在前文中已经介绍过了，不再赘述。
+
+#### 15.1.1.1 数据结构
+
+*vector*的底层数据结构是动态数组，因此，*vector*的数据安排以及操作方式与*std::array*十很相似，它们间的唯一差别在于对空间的运用灵活性上。*array*为静态数组，有着静态数组最大的缺点：每次只能分配一定大小的存储空间，当有新元素插入时，要经历 “找到更大的内存空间”->“把数据复制到新空间” ->“销毁旧空间” 三部曲， 对于*std::array*而言，这种空间管理的任务压在使用它的用户身上，用户必须把握好数据的数量，尽量在第一次分配时就给数据分配合理的空间（这有时很难做到），以防止“三部曲”带来的代价，而数据溢出也是静态数组使用者需要注意的问题。而*vector*用户不需要亲自处理空间运用问题。*vector*是动态空间，随着新元素的插入，旧存储空间不够用时，*vector*内部机制会自行扩充空间以容纳新元素，当然，这种空间扩充大部分情况下（几乎是）也逃脱不了“三部曲”，只是不需要用户自己处理，而且*vector*处理得更加安全高效。*vector*的实现技术关键就在于对其大小的控制以及重新配置时数据移动效率。 
+
+#### 15.1.1.2 迭代器类型
+
+对于*Cstyle*数组，我们使用普通指针就可以对数组进行各种操作。*vector*维护的是一个连续线性空间，与数组一样，所以无论其元素型别为何，普通指针都可以作为*vector*的迭代器而满足所有必要的条件。*vector*所需要的迭代器操作，包括*operator*,*operator->*,*operator++*,*operator--*,*operator+=*,*operator-=*等，普通指针都具有。因此，普通指针即可满足*vector*对迭代器的需求。所以，*vector*提供了*Random Access Iterators*。 
+
+#### 15.1.1.3 内存分配
+
+标准库的实现者使用了这样的内存分配策略：以最小的代价连续存储元素。为了使*vector*容器实现快速的内存分配，其实际分配的容量要比当前所需的空间多一些(预留空间)，*vector*容器预留了这些额外的存储区用于存放添加的新元素，于是不必为每个新元素进行一次内存分配。当继续向容器中加入元素导致备用空间被用光（超过了容量*capacity*），此时再加入元素时*vector*的内存管理机制便会扩充容量至两倍，如果两倍容量仍不足，就扩张至足够大的容量。容量扩张必须经历“重新配置、元素移动、释放原空间”这个浩大的工程。按照《*STL*源码剖析》中提供的*vector*源码，*vector*的内存配置原则为：
+
+- 如果*vector*原大小为0，则配置1，也即一个元素的大小。
+- 如果原大小不为0，则配置原大小的两倍。
+
+当然，*vector*的每种实现都可以自由地选择自己的内存分配策略，分配多少内存取决于其实现方式，不同的库采用不同的分配策略。
+
+#### 15.1.1.4 迭代器失效
+
+对于迭代器失效的问题，*vector*有三种情况会导致迭代器失效：
+
+* *vector*管理的是连续的内存空间，在容器中插入（或删除）元素时，插入（或删除）点后面的所有元素都需要向后（或向前）移动一个位置，指向发生移动的元素的迭代器都失效。 
+* 随着元素的插入，原来分配的连续内存空间已经不够且无法在原地拓展新的内存空间，整个容器会被*copy*到另外一块内存上，此时指向原来容器元素的所有迭代器通通失效。 
+* 删除元素后，指向被删除元素的迭代器失效。
+
+#### 15.1.1.5 常用成员函数
+
+```cpp
+explicit vector (size_type n, const value_type& val = value_type(), const allocator_type& alloc = allocator_type());
+template <class InputIterator> vector (InputIterator first, InputIterator last, const allocator_type& alloc = allocator_type());
+vector (const vector& x);
+vector& operator= (const vector& x);//包含赋值和移动版本
+reference at (size_type n);//以此替换operator[]，at函数会做边界检测
+iterator insert (iterator position, const value_type& val);//Inserting new elements before the element at the specified position. Return an iterator that points to the first of the newly inserted elements.
+void insert (iterator position, size_type n, const value_type& val);
+template <class InputIterator>
+void insert (iterator position, InputIterator first, InputIterator last);
+template <class... Args>
+iterator emplace (const_iterator position, Args&&... args);//和insert功能类型，返回值也一样，只不过只能插入一个值的右值引用
+iterator erase (iterator position);//Return an iterator pointing to the new location of the element that followed the last element erased by the function call.
+iterator erase (iterator first, iterator last);
+```
+
 ### 15.1.2 *list*
 
-### 15.1.3 deque
+#### 15.1.2.1 数据结构
+
+list同样是一个模板类，它底层数据结构为双向循环链表。因此，它支持任意位置*O(1)*的插入/删除操作，不支持快速随机访问。*list*的迭代器具备前移、后移的能力，所以*list*提供的是*Bidirectional iterator*(双向迭代器)。由于采用的是双向迭代器，自然也很方便在指定元素之前插入新节点，所以*list*很正常地提供了*insert()*/*emplace()*操作与*push_back()*/*pop_back()*/*emplace_front()*/*emplace_back()*操作。 
+
+#### 15.1.2.2 内存分配
+
+*list*的空间配置策略，自然是像我们普通双向链表那样，有多少元素申请多少内存。它不像*vector*那样需要预留空间供新元素的分配，也不会因找不到连续的空间而引起整个容器的内存迁移。
+
+#### 15.1.2.3 迭代器失效
+
+插入操作（*insert*）与接合操作（*splice*）都不会造成原有的list迭代器失效。这在*vector*是不成立的，因为*vector*的插入可能引起空间的重新配置，导致原来的迭代器全部失效。*list*的迭代器失效，只会出现在删除的时候，指向删除元素的那个迭代器在删除后失效。  
+
+#### 15.1.2.4 常用成员函数
+
+```cpp
+//构造函数同vector类似
+void remove (const value_type& val);//Remove elements with specific value
+iterator insert (iterator position, const value_type& val);//inserting new elements before the element at the specified position. Return An iterator that points to the first of the newly inserted elements.
+void insert (iterator position, size_type n, const value_type& val);
+template <class InputIterator>
+void insert (iterator position, InputIterator first, InputIterator last);
+iterator erase (iterator position);//Return An iterator pointing to the element that followed the last element erased by the function call. 
+iterator erase (iterator first, iterator last);
+```
+
+### 15.1.3 *deque*
+
+#### 15.1.3.1 数据结构
+
+ *vector*是单向开口的线性连续空间，*deque*则是一种双向开口的连续数据空间。所谓的双向开口，意思是可以在头尾两端分别做元素的插入和删除操作。当然*vector*也可以在头尾两端进行操作，但是其头部操作效果奇差，所以标准库没有为*vector*提供*push_front*或*pop_front*操作。与*vector*类似，*deque*支持元素的快速随机访问。 
+
+*deque*由一段一段的定量连续空间构成。一旦有必要在*deque*的前端或尾端增加新空间，便配置一段定量连续空间，串接在整个*deque*的头端或尾端。*deque*的最大任务，便是在这些分段的定量连续空间上，维护其整体连续的假象，并提供随机存取的接口。避开了“重新配置、复制、释放”的轮回，代价则是复杂的迭代器架构。
+
+受到分段连续线性空间的字面影响，我们可能以为*deque*的实现复杂度和*vector*相比差不太多，其实不然。主要因为，既是分段连续线性空间，就必须有中央控制，而为了维持整体连续的假象，数据结构的设计及迭代器前进后退等操作都颇为繁琐。*deque*的实现代码分量远比*vector*或*list*都多得多。
+
+*deque*采用一块所谓的*map*（注意，不是*STL*的*map*容器）作为主控。这里所谓*map*是一小块连续空间，其中每个元素（此处称为一个节点，*node*）都是指针，指向另一段（较大的）连续线性空间，称为缓冲区。缓冲区才是*deque*的储存空间主体。*SGI STL*允许我们指定缓冲区大小，默认值0表示将使用512*bytes*缓冲区。
+
+#### 15.1.3.2 迭代器类型
+
+*deque*的迭代器必须能够指出分段连续空间（亦即缓冲区）在哪里，其次它必须能够判断自己是否已经处于其所在缓冲区的边缘，如果是，一旦前进或后退就必须跳跃至下一个或上一个缓冲区。为了能够正确跳跃，*deque*必须随时掌握管控中心（*map*）。所以在迭代器中需要定义：当前元素的指针，当前元素所在缓冲区的起始指针，当前元素所在缓冲区的尾指针，指向*map*中指向所在缓区地址的指针，分别为*cur*，*first*，*last*，*node*。
+
+#### 15.1.3.3 迭代器失效
+
+- 在deque容器首部或者尾部插入元素不会使得任何迭代器失效。
+- 在其首部或尾部删除元素则只会使指向被删除元素的迭代器失效。
+- 在deque容器的任何其他位置的插入和删除操作将使指向该容器元素的所有迭代器失效。
 
 ## 15.2 容器适配器
 
-C++提供了三种容器适配器（container adapter）：stack，queue和priority_queue。stack和queue基于deque实现，priority_queue基于vector实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器.
+如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以关联容器为基础实现的。*C++*提供了三种容器适配器（*container adapter*）：*stack*，*queue*和*priority_queue*。*stack*和*queue*基于*deque*实现，*priority_queue*基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
 
-### 15.2.1 stack
+### 15.2.1 *stack*
 
-### 15.2.2 queue
+*stack*为了提供LILO的数据结构。常用成员函数为：
 
-### 15.2.3 priority_queue
+```cpp
+template <class... Args> void emplace (Args&&... args);
+bool empty() const;
+void pop();
+void push (const value_type& val);
+size_type size() const;
+void swap (stack& x) noexcept;
+value_type& top();
+```
+
+我自己测试发现底层容器改成vector会比用default的deque要快。
+
+### 15.2.2 *queue*
+
+*queue*为了提供FIFO的数据结构。常用成员函数为：
+
+```cpp
+value_type& back();
+template <class... Args> void emplace (Args&&... args);
+bool empty() const;
+value_type& front();
+void pop();
+void push (const value_type& val);
+size_type size() const;
+void swap (queue& x) noexcept;
+```
+
+### 15.2.3 *priority_queue*
+
+*priority_queue*为了提供优先队列，数据结构为大根堆，能够常数时间获得最大的元素，插入删除时间复杂度为O(lgn)。常用成员函数为：
+
+```cpp
+template <class... Args> void emplace (Args&&... args);
+bool empty() const;
+void pop();
+void push (const value_type& val);
+size_type size() const;
+void swap (priority_queue& x) noexcept;
+const value_type& top() const;
+```
 
 ## 15.3 关联容器
 
-### 15.3.1 map/multimap
+### 15.3.1 *map/multimap*
 
-### 15.3.2 set/multiset
+### 15.3.2 *set/multiset*
 
-### 15.3.3 unordered_map
+### 15.3.3 *unordered_map*/unordered_multimap
+
