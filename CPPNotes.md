@@ -1,6 +1,6 @@
 # 1.变量
 
-*C/C++*程序内存分为堆区，栈区，全局区（静态区），常量区，代码区。
+*C/C++*程序内存分为堆区（自由存储区），栈区，全局区（静态区），常量区，代码区。
 
 ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义段。
 
@@ -32,13 +32,93 @@ ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义�
 
 正在运行的程序 = *text + bss + data + rodata + stack + heap*
 
+## 1.4 *heap*和*free store*释疑
+
+网上有说法是*malloc*申请的内存在*heap*区而*new/new[]*申请的内存在*free store*区，但是根据我的查阅的资料发现二者是没有区别的。
+
+首先是根据*Herb Sutter* (*served as secretary and convener of the ISO C++ standards committee for over 10 years*)对*heap*的说法:
+
+> The heap is the other dynamic memory area,allocated/freed by malloc/free and their variants.  Note that while the default global new and delete might be implemented in terms of malloc and free by a particular compiler, the heap is not the same as free store and memory allocated in one area cannot be safely deallocated in the other. Memory allocated from the heap can be used for objects of class type by placement-new construction and explicit destruction.  If so used, the notes about free store object lifetime apply similarly here.
+
+对于*free store*他觉得是：
+
+> The free store is one of the two dynamic memory areas, allocated/freed by new/delete.  Object lifetime can be less than the time the storage is allocated; that is, free store objects can have memory allocated without being immediately initialized, and can be destroyed without the memory being immediately deallocated.  During the period when the storage is allocated but outside the object's lifetime, the storage may be accessed and manipulated through a void* but none of the proto-object's nonstatic members or member functions may be accessed, have their addresses taken, or be otherwise manipulated.
+
+他觉得我们做这个区分是因为：
+
+>  We distinguish between "heap" and "free store" because the draft deliberately leaves unspecified the question of whether these two areas are related. 
+
+而*C++*之父对此的回应是：
+
+> In other word, the "free store" vs "heap" distinction is Herb's attempt to distinguish malloc() allocation from new allocation.
+>
+> Because even though it is undefined from where new and malloc() get their memory, they typically get them from exactly the same place. It is common for new and malloc() to allocate and free storage from the same part of the computer's memory. In that case, "free store" and "heap" are synonyms. I consistently use "free store" and "heap" is not a defined term in the C++ standard (outside the heap standard library algorithms, which are unrelated to new and malloc()). In relation to new, "heap" is simply a word someone uses (typically as a synonym to "free store") - usually because they come from a different language background.
+
+他认为标准没有定义*new*和*malloc*申请内存的位置，但是可以把*free store*和*heap*当成是一块区域。
+
+另外经过我查看*GCC*或者*VSC++*源码发现*new operator*的实现都是调用的*malloc*：
+
+```cpp
+//GCC gcc/libstdc++-v3/libsupc++/new_op.cc
+_GLIBCXX_WEAK_DEFINITION void *
+operator new (std::size_t sz) _GLIBCXX_THROW (std::bad_alloc)
+{
+  void *p;
+
+  /* malloc (0) is unpredictable; avoid it.  */
+  if (__builtin_expect (sz == 0, false))
+    sz = 1;
+
+  while ((p = malloc (sz)) == 0)
+    {
+      new_handler handler = std::get_new_handler ();
+      if (! handler)
+	_GLIBCXX_THROW_OR_ABORT(bad_alloc());
+      handler ();
+    }
+
+  return p;
+}
+//VSC++ VC/Tools/MSVC/14.10.25017/crt/src/vcruntime/new_scalar.cpp
+void* __CRTDECL operator new(size_t const size)
+{
+    for (;;)
+    {
+        if (void* const block = malloc(size))
+        {
+            return block;
+        }
+
+        if (_callnewh(size) == 0)
+        {
+            if (size == SIZE_MAX)
+            {
+                __scrt_throw_std_bad_array_new_length();
+            }
+            else
+            {
+                __scrt_throw_std_bad_alloc();
+            }
+        }
+    }
+}
+```
+
+所以我们不必纠结二者的差异，就当场一样的就好了。
+
+*reference*:
+
+> http://zamanbakshifirst.blogspot.com/2007/02/c-free-store-versus-heap.html 
+>
+> http://www.gotw.ca/gotw/009.htm 
+
 # 2.字符、字符串
 
 `char a = ‘a’;`
 
 `char *b = “abc”;`
 
-上述两个类型为字符及字符串常量，存储在ELF文件的*.rodata*段，程序运行后加载到内存空间的常量区。
+上述两个类型为字符及字符串常量，存储在*ELF*文件的*.rodata*段，程序运行后加载到内存空间的常量区。
 
 `char c[] = “abc”;`此为*char*型数组，存放在堆区。
 
@@ -60,13 +140,9 @@ ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义�
 
  ![IEEE 754r Half Floating Point Format.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/IEEE_754r_Half_Floating_Point_Format.svg/175px-IEEE_754r_Half_Floating_Point_Format.svg.png) 
 
-*float*:
+*float*: ![Float example.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Float_example.svg/590px-Float_example.svg.png) 
 
- ![Float example.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Float_example.svg/590px-Float_example.svg.png) 
-
-*double*:
-
- ![General double precision float.png](https://upload.wikimedia.org/wikipedia/commons/7/76/General_double_precision_float.png) 
+*double*: ![General double precision float.png](https://upload.wikimedia.org/wikipedia/commons/7/76/General_double_precision_float.png) 
 
 # 4.类型提升
 
@@ -256,11 +332,10 @@ vfunc();
 ## 6.3 构造函数/析构函数
 
 + 1)    构造函数在生成对象时调用，分为默认构造函数，拷贝构造函数，移动构造函数，赋值构造函数和移动赋值构造函数。
-
 + 2)    在构造函数后面加*default*关键字可将某个构造函数设置成默认的构造函数，比如若果我们没有定义构造函数，编译器会帮助我们生成默认无参且函数体为空的默认构造函数；但如果我们定义了一个有参数的构造函数，编译器便不会帮助我们生成默认构造函数，此时我们不能够像这样定义对象*MyClass mc*，但是我们可以通过添加*default*关键字恢复：
 + `MyClass() = default;`
-
 + 3)    在构造函数后面加*delete*关键字可将某个构造函数设为禁用，比如我们不希望对象进行拷贝构造而希望其进行移动构造这样能避免不必要的内存分配和拷贝，这样我们可在拷贝构造函数和赋值拷贝构造函数后面添加*delete*关键字。
++ 在一个类的成员变量只有*primitive type*时我们直接将*primitive type*赋值给对象会发生隐式转换，这种时候编译器不会报错并且能正常运行，但是可能并不是我们想要的结果。我们希望能早早地在编译阶段就发现这些问题，这时候我们可以将对应的构造函数声明为*explicit*，这样编译器在静态检查阶段便能发现问题。
 
 ```cpp
 class A
@@ -273,25 +348,29 @@ A(int x):x(x)
 }
 A(A &a)
 {
+    this->x = a.x;
     this->n = new int[x];
     memcpy(this->n, a.n, x * sizeof(typeid(n)));
     cout << "A copy construction" << endl;
 }
 A(A &&a)
 {
+    this->x = a.x;
     this->n = a.n;
     a->n = nullptr;
     cout << "A move construction" << endl;
 }
-A& operator=(A &a)
+explicit A& operator=(A &a)
 {
+    this->x = a.x;
     this->n = new int[x];
     memcpy(this->n, a.n, x * sizeof(typeid(n)));
     cout << "A copy assignment construction" << endl;
     return *this;
 }
-A& operator=(A &&a)
+explicit A& operator=(A &&a)
 {
+    this->x = a.x;
     this->n = a.n;
     a->n = nullptr;
     cout << "A move assignment construction" << endl;
@@ -310,6 +389,23 @@ private:
 int x = 0;
 int *n;
 };
+A test()
+{
+        A a(1);
+        return a;
+}
+A a = 10;//error，不能进行隐式转换
+/*
+A default construction
+A move construction
+A destruction
+A move assignment construction
+//若移动赋值构造函数返回值，这里会多一个拷贝构造函数和析构
+A destruction
+A destruction
+*/
+A a1;
+a1 = test();
 ```
 
 + 1) 默认构造函数为编译器为我们默认生成的构造函数，实际上没有任何操作。
@@ -333,6 +429,10 @@ public:
     lock_guard& operator=(lock_guard const&) = delete;
 };
 ```
+
+### 6.3.1 返回值优化(*RVO*)
+
+ https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
 
 ## 6.4 类的静态成员函数和变量
 
@@ -368,7 +468,22 @@ friend class B;
 
 ## 6.6 操作符重载
 
-+ 1) 在类中声明的成员函数操作符重载只能重载单目运算，意味着只能传入一个参数，而友元函数和普通函数则可重载双目运算符，此时可以传入两个参数。
++ 1) 在类中声明的成员函数操作符重载只能被成员触发，所以对于双目运算符来说只能是运算符左边的对象来触发运算符重载。假如说我们希望实现`primitive_type operator object;`这种模式，我们只能用普通函数重载运算符而不是成员函数重载运算符：
+
+  ```cpp
+  class Register{
+  public:
+  	Register& operator+(Register &b) {
+  		this->regVal+= b.regVal;
+  		return *this;
+  	}
+  	friend  Register& operator+(int a, Register &b) {
+  		b.regId += a;
+  		return b;
+  	}
+  	int regVal; 
+  };
+  ```
 
 + 2) 使用*ostream*对象进行*<<*操作只能定义为普通函数或者友元函数，因为无法修改*ostream*对象的*<<*代码实现，此时需要传入两个参数：
 
@@ -668,6 +783,8 @@ int main()
 
 # 12.移动语义和右值引用
 
+首先我们来定义一下左值和右值，左值就是有名字的对象或者变量，可以被赋值或给别的对象或变量赋值，比如 `obj` , `*ptr` , `ptr[index]` , 和`++x` ；而右值就是临时变量（对象），不能被赋值，比如 `1729` , `x + y` , `std::string("meow")` , 和`x++`，另外还有函数的返回值 。
+
 在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造或者直接使用右值进行构造都会触发调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
 
 ```cpp
@@ -677,6 +794,25 @@ A(A &&a)
     a->n = nullptr;
     cout << "A move construction" << endl;
 }
+```
+
+如果我们为对象实现了移动构造函数，在函数中返回局部对象时我们也会触发移动语义：
+
+* 1) 局部变量赋给临时变量时触发移动构造函数（没有则触发拷贝构造函数）
+* 2) 临时变量赋值给函数已经声明过的外部变量时会触发移动赋值构造函数（这种情况没有会编译出错）
+* 3) 若是声明时赋值则触发移动构造函数（若没有可以触发拷贝构造函数）
+* 4) 若移动赋值构造函数返回值会在临时对象赋值给外部对象时再调用一次复制构造函数，这是因为又实例化了一个新的对象
+* 5) 这一段可结合*6.3*章节一起看
+
+```cpp
+A test()
+{
+    A a;
+    return a;
+}
+A a1 = test();//触发移动构造函数，若没有则触发拷贝构造函数
+A a2;
+a2 = test();//触发移动赋值构造函数，若没有编译出错： error: invalid initialization of non-const reference of type ‘A&’ from an rvalue of type ‘A’
 ```
 
 右值引用使*C++*标准库的实现在多种场景下消除了不必要的额外开销（如*std::vector*,*std::string*），也使得另外一些标准库（如*std::unique_ptr*,*std::function*）成为可能。右值引用的意义通常为两大作用：移动语义和完美转发。移动语义即为上述所示的移动构造函数，*std::vector*和*std::string*也可以通过移动构造函数来构造，这样就避免了重新给vetor或者string分配空间的开销：
@@ -977,7 +1113,7 @@ int main(int argc, char* argv[])
 
 # 15.*STL*容器
 
-## 15.1 顺序容器
+## 15.1 顺序容器(*sequence container*)
 
 ### 15.1.1 *vector*
 
@@ -1075,9 +1211,9 @@ iterator erase (iterator first, iterator last);
 - 在其首部或尾部删除元素则只会使指向被删除元素的迭代器失效。
 - 在deque容器的任何其他位置的插入和删除操作将使指向该容器元素的所有迭代器失效。
 
-## 15.2 容器适配器
+## 15.2 容器适配器(*container adaptor*)
 
-如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以关联容器为基础实现的。*C++*提供了三种容器适配器（*container adapter*）：*stack*，*queue*和*priority_queue*。*stack*和*queue*基于*deque*实现，*priority_queue*基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
+如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以关联容器为基础实现的。*C++*提供了三种容器适配器：*stack*，*queue*和*priority_queue*。*stack*和*queue*基于*deque*实现，*priority_queue*基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
 
 ### 15.2.1 *stack*
 
@@ -1124,11 +1260,176 @@ void swap (priority_queue& x) noexcept;
 const value_type& top() const;
 ```
 
-## 15.3 关联容器
+## 15.3 关联容器(*associative container*)
+
+关联容器的关联指的是存储的元素的位置是和其值是相关联的，而不是像顺序容器一样是绝对的位置。其存储顺序可分为有序和无序两种，有序的是*map/set*，其内部数据结构为*RBT*；无序的就是*unordered_map/set*，其内部数据结构为*hashmap*。
 
 ### 15.3.1 *map/multimap*
 
+常用成员函数：
+
+```cpp
+mapped_type& at ( const key_type& k );//If k does not match the key of any element in the container, the function throws an out_of_range exception.
+template <class P> pair<iterator,bool> insert (P&& val);//插入成功返回指向新元素的迭代器和true的pair，如有相同元素则返回原有元素迭代器和false的pair
+template <class P> iterator insert (const_iterator position, P&& val);//若插入恰巧发生在hint前的位置（用upper_bound()获得），则时间复杂度为常数
+template <class InputIterator>
+void insert (InputIterator first, InputIterator last);
+mapped_type& operator[] (key_type&& k);//等于(*((this->insert(make_pair(k,mapped_type()))).first)).second，所以无论其实是否包含该元素都会做一次insert操作
+iterator  erase (const_iterator position);//返回删除元素的下一个元素的迭代器
+iterator  erase (const_iterator first, const_iterator last);
+size_type erase (const key_type& k);//返回删除元素个数
+iterator find (const key_type& k);
+size_type count (const key_type& k) const;//map只返回0或1
+pair<iterator,iterator> equal_range (const key_type& k);
+key_compare key_comp() const;
+template <class... Args>
+pair<iterator,bool> emplace (Args&&... args);
+map& operator= (const map& x);
+map& operator= (map&& x);
+map& operator= (initializer_list<value_type> il);
+```
+
 ### 15.3.2 *set/multiset*
 
-### 15.3.3 *unordered_map*/unordered_multimap
+常用成员函数除*operator[]*外和*map*系列一致。
 
+### 15.3.3 *unordered_map*/*unordered_multimap*
+
+*unordered_map*内部使用*bucket hash*实现的*hashmap*，属于开放地址法的一种，默认构造函数后桶个数初始化为*11*。开放地址法是所有的元素都存放在散列表里，发生地址冲突时，按照某种方法继续探测*Hash*表中其它存储单元，直到找到空位置为止 。除了这种开放地址法我们还有封闭地址的方法，也叫拉链法，即冲突后再节点后面用链表延伸冲突的*key*，也可以改成用二叉树。
+
+其中的哈希函数又采用的是*Fowler–Noll–Vo*算法，属于非密码学哈希函数，目前有三种，分别是*FNV-1*，*FNV-1a*和*FNV-0*，但是*FNV-0*算法已经被丢弃了。*FNV*算法的哈希结果有*32、64、128、256、512*和*1024*位等长度。如果需要哈希结果长度不属于以上任意一种，也可以根据*Changing the FNV hash size - xor-folding*上面的指导进行变换得到。4字节的特例化代码如下：
+
+```cpp
+///usr/include/c++/5.4.0/tr1/functional_hash.h
+template<>
+struct _Fnv_hash_base<4>
+{
+    template<typename _Tp>
+    static size_t
+    hash(const _Tp* __ptr, size_t __clength)
+    {
+        size_t __result = static_cast<size_t>(2166136261UL);
+        const char* __cptr = reinterpret_cast<const char*>(__ptr);
+        for (; __clength; --__clength){
+            __result ^= static_cast<size_t>(*__cptr++);
+            __result *= static_cast<size_t>(16777619UL);
+        }
+        return __result;
+    }
+};
+```
+
+另外密码学中常用的哈希算法还有*MD5、SHA1、SHA2、SHA256、SHA512、SHA3、RIPEMD160*。
+
+常用成员函数除和map一样的之外还有：
+
+```cpp
+void rehash( size_type n );//Sets the number of buckets in the container to n or more.
+float load_factor() const noexcept;//load_factor = size / bucket_count
+hasher hash_function() const;
+size_type bucket_count() const noexcept;
+```
+
+### 15.3.4 *unordered_set*/*unordered_multiset*
+
+常用成员函数除*operator[]*外和*unordered_map*系列一致。
+
+# 16.并发编程模型和多线程程序实现  
+
+ ![Process-thread relationship](https://computing.llnl.gov/tutorials/pthreads/images/thread.gif) 
+
+*C++11*的*std::thread*是经过良好设计并且跨平台的线程表示方式，在类*Unix*平台上是对*pthread*进行的面向对象封装（增加了易用性，也损失了一些功能，所以*pthread*是*C++11*并发编程库的超集），比如*std::thread*的构造函数中调用的就是*pthread_create*来创建线程。如果在代码中使用了*std::thread*，还需要另外链接*libpthread.so*；而在*Windows*上有自己另外的封装。
+
+我们首先来介绍一下*pthread*。
+
+## 16.1 *pthread*
+
+pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。实现POSIX 线程标准的库常被称作**Pthreads**，一般用于Unix-like POSIX 系统，如Linux、Solaris。Linux的pthread实现是*Native POSIX Thread Library* (*NPTL*)。在Linux2.6之前进程是内核调度的实体，在内核中并不能真正支持线程。但是它的确可以通过 `clone()` 系统调用将进程作为可调度的实体。这个调用创建了调用进程（calling process）的一个拷贝，这个拷贝与调用进程共享相同的地址空间。LinuxThreads 项目使用这个调用来完全在用户空间模拟对线程的支持。不幸的是，这种方法有一些缺点，尤其是在信号处理、调度和进程间同步原语方面都存在问题。另外，这个线程模型也不符合 POSIX 的要求。要改进 LinuxThreads，非常明显我们需要内核的支持，并且需要重写线程库。有两个相互竞争的项目开始来满足这些要求。一个包括 IBM 的开发人员的团队开展了 NGPT（Next-Generation POSIX Threads）项目。同时，Red Hat 的一些开发人员开展了 NPTL 项目。NGPT 在 2003 年中期被放弃了，把这个领域完全留给了 NPTL。
+
+> reference:https://www.ibm.com/developerworks/cn/linux/l-threading.html
+
+Pthreads定义了一套C语言的类型、函数与常量，它以`pthread.h`头文件和一个线程库实现。
+
+Pthreads API中大致共有100个函数调用，全都以"pthread_"开头，并可以分为四类：
+
+- 线程管理，例如创建线程，等待(join)线程，查询线程状态等。
+- 互斥锁（Mutex）：创建、摧毁、锁定、解锁、设置属性等操作
+- 条件变量（Condition Variable）：创建、摧毁、等待、通知、设置与查询属性等操作
+- 使用了互斥锁的线程间的同步管理
+
+POSIX的Semaphore API可以和Pthreads协同工作，但这并不是Pthreads的标准。因而这部分API是以"sem\_"打头，而非"pthread_"。下面是一个简单用例：
+
+``` cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <pthread.h>
+
+static void wait(void)
+{
+    time_t start_time = time(NULL);
+    while (time(NULL) == start_time){
+        /* do nothing except chew CPU slices for up to one second */
+    }
+}
+
+static void *thread_func(void *vptr_args)
+{
+    int i;
+    for (i = 0; i < 20; i++){
+        fputs("  b\n", stderr);
+        wait();
+    }
+    return NULL;
+}
+
+int main(void)
+{
+    int i;
+    pthread_t thread;
+
+    if (pthread_create(&thread, NULL, thread_func, NULL) != 0){
+        return EXIT_FAILURE;
+    }
+    for (i = 0; i < 20; i++){
+        puts("a");
+        wait();
+    }
+    if (pthread_join(thread, NULL) != 0){
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+```
+
+## 16.2 *std::thread*
+
+*std::thread*封装了*pthread*的线程管理接口，相对于*pthread*最方便的地方在于不需要将参数打包在一个*void\**中进行参数传入，*std::thread*使用模板函数对多参数进行了打包从而让我们能将参数一个一个的传入。
+
+> reference:https://www.zhihu.com/question/30553807
+
+常用的成员函数有：
+
+```cpp
+thread() noexcept;//默认构造函数并不代表有线程开始执行，non-joinable
+template <class Fn, class... Args>
+explicit thread (Fn&& fn, Args&&... args);//若参数为引用类型我们可以用std::ref进行转换
+thread (const thread&) = delete;//禁止拷贝构造函数但是允许移动语义
+thread (thread&& x) noexcept;
+void detach();
+void join();//和detach一样执行之后都变成non-joinable，但是join为阻塞的
+native_handle_type native_handle();//This member function is only present in class thread if the library implementation supports it. 例如在linux就获得pthread_t
+id get_id() const noexcept;
+```
+
+## 16.3 *std::mutex*
+
+## 16.4 *std::condition*
+
+## 16.5 *std::atomic*
+
+## 16.6 *std::future*
+
+## 16.7 *std::promise*
+
+## 16.8 *std::async*
