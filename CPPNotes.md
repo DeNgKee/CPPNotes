@@ -286,42 +286,56 @@ mc.value = 10;
 cout<<mc.*ptr<<endl;
 ```
 
+### 6.1.1 logical constness
+
 ## 6.2 对象
 
 + 1)    对象是类实例化（调用构造函数）之后的结果，仅对`public`成员有访问权限，释放时会自动调用析构函数。
 
 + 2)    对象模型
   + a) C++*中虚函数的作用主要是为了实现多态机制。多态，简单来说，是指在继承层次中，父类的指针可以具有多种形态——当它指向某个子类对象时，通过它能够调用到子类的函数，而非父类的函数。
+  
   + b) 当一个类本身定义了虚函数，或其父类有虚函数时，为了支持多态机制，编译器将为该类添加一个虚函数指针（*vptr*）。虚函数指针一般都放在对象内存布局的第一个位置上，这是为了保证在多层继承或多重继承的情况下能以最高效率取到虚函数表。
+  
   + c) 当*vprt*位于对象内存最前面时，对象的地址即为虚函数指针地址。我们可以取得虚函数指针的地址：
+  
+    ```cpp
+    Base b;
+    int * vptrAdree = (int *)(&b); 
+    cout << "虚函数指针（vprt）的地址是：\t"<<vptrAdree << end;
+    ```
 
-```cpp
-Base b;
-int * vptrAdree = (int *)(&b); 
-cout << "虚函数指针（vprt）的地址是：\t"<<vptrAdree << endl;
-```
+* * 我们强行把类对象的地址转换为*int\** 类型，取得了虚函数指针的地址。虚函数指针指向虚函数表,虚函数表中存储的是一系列虚函数的地址，虚函数地址出现的顺序与类中虚函数声明的顺序一致。对虚函数指针地址值，可以得到虚函数表的地址，也即是虚函数表第一个虚函数的地址:
 
-我们强行把类对象的地址转换为*int\** 类型，取得了虚函数指针的地址。虚函数指针指向虚函数表,虚函数表中存储的是一系列虚函数的地址，虚函数地址出现的顺序与类中虚函数声明的顺序一致。对虚函数指针地址值，可以得到虚函数表的地址，也即是虚函数表第一个虚函数的地址:
+    ```cpp
+    typedef void(*Fun)(void);
+    Fun vfunc = (Fun)*( (int *)*(int*)(&b));
+    cout << "第一个虚函数的地址是：" << (int *)*(int*)(&b) << endl;
+    cout << "通过地址调用虚函数Base::print()：";
+    vfunc();
+    ```
 
-```cpp
-typedef void(*Fun)(void);
-Fun vfunc = (Fun)*( (int *)*(int*)(&b));
-cout << "第一个虚函数的地址是：" << (int *)*(int*)(&b) << endl;
-cout << "通过地址，调用虚函数Base::print()：";
-vfunc();
-```
+* * 我们把虚表指针的值取出来： *\*(int\*)(&b)*，它是一个地址，虚函数表的地址
 
-我们把虚表指针的值取出来： *\*(int\*)(&b)*，它是一个地址，虚函数表的地址
+    把虚函数表的地址强制转换成 *int\** :*(int\*) \*(int\*)(&b)*
 
-把虚函数表的地址强制转换成 *int\** :*(int\*) \*(int\*)(&b)*
+    再把它转化成我们Fun指针类型： *(Fun)\*(int \*)\*(int\*)(&b)*
 
-再把它转化成我们Fun指针类型： *(Fun)\*(int \*)\*(int\*)(&b)*
+    这样，我们就取得了类中的第一个虚函数，我们可以通过函数指针访问它。
 
-这样，我们就取得了类中的第一个虚函数，我们可以通过函数指针访问它。
-
-同理,第二个虚函数的地址为：*(int\*)(\*(int\*)(&b)+1)*
+    同理,第二个虚函数的地址为：*(int\*)(\*(int\*)(&b)+1)*
 
 + + d) 子类若*override*了一个父类的虚函数，其虚函数表中对应被*override*的虚函数指针会替换成自己*override*的函数，若有新增虚函数则在虚函数表后面累加新的虚函数指针。
+
+  + e) 所以继承类的对象内存分布为：
+
+    | 地址 | 内容                 |
+    | ---- | -------------------- |
+    |      | 第一个父类虚表指针   |
+    |      | 第一个父类成员变量*n |
+    |      | 第二个父类虚表指针   |
+    |      | 第二个父类成员变量*m |
+    |      | 自身的成员变量*k     |
 
 + 3)    对象大小
   + a) 空类的大小为1；
@@ -539,7 +553,11 @@ void MyFunc(int value){
 MyNamespace::MyFunc(MyNamespace::value);
 ```
 
-若作用域符前面没有任何`namespace`或者类名，则表示访问的是全局变量。
+若作用域符前面没有任何`namespace`或者类名，则表示访问的是全局变量。但这个规则不适用于*C++98*风格的枚举型别中定义的枚举量。这些枚举量的名字属于包含着这个枚举型别的作用于，这就意味着在此作用域内不能有其他实体取相同的名字。
+
+## 6.1 限定作用于枚举类型
+
+先说一个通用规则，如果在一对大括号里声明一个名字，则改名字的可见性就被限定在括号括起来的作用于内。
 
 # 7.Name Mangling
 
@@ -889,6 +907,26 @@ void enter(T&& t) {
 [=, &z]   //z按引用捕获. 其它变量按值捕获
 ```
 
+对于成员函数中的*lambda*表达式如果我们期望成员变量按值捕获要注意不能直接用*[=]*让任何外部变量都隐式按值捕获，因为捕获了*this*之后其实是能够操作所有成员变量，这样所有成员变量实际是按引用捕获的，所以应该明确写出对*this*的捕获：
+
+```cpp
+class MyClass {
+public:
+    void Foo()
+    {
+        int i = 0;
+        auto Lambda = [=]() { Use(i, data_); };   // 不好: 看起来像是拷贝/按值捕获，成员变量实际上是按引用捕获
+        data_ = 42;
+        Lambda(); // 调用 use(42);
+        data_ = 43;
+        Lambda(); // 调用 use(43);
+        auto Lambda2 = [i, this]() { Use(i, data_); }; // 好，显式指定按值捕获，最明确，最少的混淆
+    }
+private:
+    int data_ = 0;
+};
+```
+
 ()中我们定义了需要直接直接传入*lambda*表达式的形参；
 
 ->之后我们定义的是返回值类型，当然我们可以将其隐藏，编译器会根据 *return*表达式进行类型推导。除了返回值可以类型推导，在*C++14*中我们使用generic lambda还能对形参进行类型推导；
@@ -943,7 +981,7 @@ int main()
 
 智能指针是在普通指针的基础上封装了一层*RAII*机制，这样一层封装机制的目的是为了使得指针可以方便的管理一个对象的生命周期。在程序员难以判断指针需要在什么时候释放，忘记释放，或者抛出异常时能安全的将内存释放。
 
-智能指针分为四种：*auto_ptr*（摒弃），*unique_ptr*，*shared_ptr*和*weak_ptr*。旧的*auto_ptr*在对新的*auto_ptr*进行复制构造了之后旧的便会失效，而*unique_ptr*在*auto_ptr*的基础上禁止了复制构造，但是可以使用移动语义转移所有权：
+智能指针分为四种：*auto_ptr*（摒弃），*unique_ptr*，*shared_ptr*和*weak_ptr*。旧的*auto_ptr*在对新的*auto_ptr*进行复制构造了之后旧的便会失效，而*unique_ptr*在*auto_ptr*的基础上禁止了复制构造，但是可以使用移动语义转移所有权，如果希望函数返回临时变量unique_ptr可将临时变量转成右值引用进行返回，这样就会触发unique_ptr的移动构造函数：
 
 ```cpp
 unique_ptr<int> up(new int);
@@ -955,6 +993,12 @@ unique_ptr<int> GetVal( ){
 }
 unique_ptr<int> uP3 = GetVal(); //ok
 unique_ptr<int> uP4 = move(up); //ok
+unique_ptr<int> test()//返回值不能为rvalue reference，否则会产生dangling reference，跟lvalue reference一样
+{
+	unique_ptr<int> a = unique_ptr<int>();
+	return move(a);//vs2017可不用转，gcc5.4中需要否则编译错误
+}
+unique_ptr<int> a1 = move(test());//ok
 ```
 
 *shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。
@@ -1012,7 +1056,7 @@ int main() {
 }
 ```
 
-*shared_ptr*在*C++17*之前都不支持动态数组：
+*shared_ptr*在*C++17*之前都不支持动态数组，所以在这之前如果用*shared_ptr.reset()*数组之后需要自定义*deleter*，使用*delete[]*来进行释放：
 
 ```cpp
 std::shared_ptr<int[]> sp1(new int[10]()); // 错误，c++17前不能传递数组类型作为shared_ptr的模板参数
@@ -1025,7 +1069,7 @@ std::shared_ptr<int> sp2(new int[10]()); // 错误，可以编译，但会产生
 ```cpp
 get(); //返回管理的裸指针
 shared_ptr<ClassName> sp(new ClassName,[](ClassName* p){delete p;});//构造函数，自定义deleter
-reset(p, Del);//重新设置维护的指针及其对应的deleter
+reset(p, Del);//重新设置维护的指针及其对应的deleter,只有shared_ptr可以reset deleter，unique_ptr不行
 get_deleter();//获得智能指针的deleter
 template <class T, class... Args>
 shared_ptr<T> make_shared (Args&&... args);//相当于调用T类的构造函数，
@@ -1160,6 +1204,7 @@ template <class... Args>
 iterator emplace (const_iterator position, Args&&... args);//和insert功能类型，返回值也一样，只不过只能插入一个值的右值引用
 iterator erase (iterator position);//Return an iterator pointing to the new location of the element that followed the last element erased by the function call.
 iterator erase (iterator first, iterator last);
+value_type* data() noexcept;//返回vertor管理的内存首地址
 ```
 
 ### 15.1.2 *list*
@@ -1348,16 +1393,16 @@ pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。�
 
 > reference:https://www.ibm.com/developerworks/cn/linux/l-threading.html
 
-Pthreads定义了一套C语言的类型、函数与常量，它以`pthread.h`头文件和一个线程库实现。
+pthread定义了一套C语言的类型、函数与常量，它以`pthread.h`头文件和一个线程库实现。
 
-Pthreads API中大致共有100个函数调用，全都以"pthread_"开头，并可以分为四类：
+pthread API中大致共有100个函数调用，全都以"pthread_"开头，并可以分为四类：
 
 - 线程管理，例如创建线程，等待(join)线程，查询线程状态等。
 - 互斥锁（Mutex）：创建、摧毁、锁定、解锁、设置属性等操作
 - 条件变量（Condition Variable）：创建、摧毁、等待、通知、设置与查询属性等操作
 - 使用了互斥锁的线程间的同步管理
 
-POSIX的Semaphore API可以和Pthreads协同工作，但这并不是Pthreads的标准。因而这部分API是以"sem\_"打头，而非"pthread_"。下面是一个简单用例：
+POSIX的Semaphore API可以和pthread协同工作，但这并不是pthread的标准。因而这部分API是以"sem\_"打头，而非"pthread_"。下面是一个简单用例：
 
 ``` cpp
 #include <stdio.h>
@@ -1422,11 +1467,445 @@ native_handle_type native_handle();//This member function is only present in cla
 id get_id() const noexcept;
 ```
 
+前面说*std::thread*损失了一些功能，比如说设置线程的*cpu affinity*，这时候我们可以通过`native_handle()`获得*pthread*的句柄，然后通过*pthread*的接口来设置*cpu affinity*：
+
+```cpp
+#include <thread>
+#include <chrono>
+#include <unistd.h>
+#include <pthread.h>
+using namespace std;
+
+void Foo()
+{
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+    float ms = 0.0;
+    while(1){
+        int sum = 0;
+        start = std::chrono::high_resolution_clock::now();
+        for(int i=0;i<100000;++i){
+            sum += 1;
+        }
+        end = std::chrono::high_resolution_clock::now();
+        ms = std::chrono::duration<float, std::milli>(end - start).count();
+        usleep(ms * 1000);//让cpu占用率为50%
+    }
+}
+int main()
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(2, &cpuset);//设置cpu2的亲和性
+    thread t1(Foo);
+    pthread_t nativeThread = t1.native_handle();
+    pthread_setaffinity_np(nativeThread, sizeof(cpu_set_t), &cpuset);
+    t1.join();
+    return 0;
+}
+```
+
 ## 16.3 *std::mutex*
 
-## 16.4 *std::condition*
+*std::mutex*互斥锁用来对临界区域加锁（可以理解为值为0或1的semaphore），和自旋锁(*spin lock*)的区别在于mutex是sleep-waiting。就是说当没有获得mutex时，会有上下文切换，将当前线程阻塞加到等待队列中，直到持有mutex的线程释放mutex并唤醒当前线程，这时CPU是空闲的，可以调度别的任务处理；而自旋锁是busy-waiting的，就是说当没有可用的锁时，就一直忙等待并不停的进行锁请求，直到得到这个锁为止，这个过程中CPU始终处于繁忙状态不能处理别的任务。
+
+### 16.3.1 pthread_mutex_t加锁原理
+
+linux平台的std::mutex是pthread_mutex_t封装，我们可以查看pthread_mutex_t源码来看std::mutex的实现，其结构体内容如下：
+
+```cpp
+typedef union
+{
+    struct __pthread_mutex_s
+    {
+        int __lock;//mutex状态，0表示未占用，1表示占用
+    	unsigned int __count;//用于可重入锁，记录owner线程持有锁的次数
+    	int __owner;//owner线程ID
+   		unsigned int __nusers;
+    	/* KIND must stay at this position in the structure to maintain
+       binary compatibility.  */
+    	int __kind;//记录mutex的类型
+    	int __spins;
+    	__pthread_list_t __list;
+  } __data;
+  ......
+} pthread_mutex_t;
+```
+
+其中` __kind  `有四种模式，分别为：
+
+```cpp
+PTHREAD_MUTEX_TIMED_NP//这是缺省值，也就是普通锁。
+PTHREAD_MUTEX_RECURSIVE_NP//可重入锁，允许同一个线程对同一个锁成功获得多次，并通过多次unlock解锁。
+PTHREAD_MUTEX_ERRORCHECK_NP//检错锁，如果同一个线程重复请求同一个锁，则返回EDEADLK，否则与PTHREAD_MUTEX_TIMED_NP类型相同。
+PTHREAD_MUTEX_ADAPTIVE_NP//自适应锁，自旋锁与普通锁的混合。
+```
+
+而C++11其实只实现了普通锁std::mutex和重入锁std::recursive_mutex，自旋锁需要我们自己实现，我们会在16.5章节中使用std::atomic来实现。
+
+pthread中使用 pthread_mutex_lock接口来对4种锁进行加锁，我们可以看一下其中的操作：
+
+```cpp
+if (__builtin_expect (type, PTHREAD_MUTEX_TIMED_NP) == PTHREAD_MUTEX_TIMED_NP)
+{
+    simple:
+    /* Normal mutex.普通锁 */
+    LLL_MUTEX_LOCK (mutex);//调用LLL_MUTEX_LOCK宏获得锁
+    assert (mutex->__data.__owner == 0);
+} else if (__builtin_expect (type == PTHREAD_MUTEX_RECURSIVE_NP, 1)) {
+      /* Recursive mutex.当发现owner就是自身，只是简单的自增__count成员即返回。否则，调用LLL_MUTEX_LOCK宏获得锁，若能成功获得，设置__count = 1，否则挂起。*/
+
+	/* Check whether we already hold the mutex.  */
+	if (mutex->__data.__owner == id)
+	{
+		/* Just bump the counter.  */
+		if (__builtin_expect (mutex->__data.__count + 1 == 0, 0))
+		/* Overflow of the counter.  */
+			return EAGAIN;
+		++mutex->__data.__count;
+		return 0;
+	}
+
+    /* We have to get the mutex.  */
+    LLL_MUTEX_LOCK (mutex);
+
+    assert (mutex->__data.__owner == 0);
+    mutex->__data.__count = 1;
+} else if (__builtin_expect (type == PTHREAD_MUTEX_ADAPTIVE_NP, 1)) {
+    /*spin lock，这种锁分两个阶段。第一阶段是自旋锁（spin lock），忙等待一段时间后，若还不能获得锁，则转变成普通锁。所谓“忙等待”，在x86处理器下是重复执行nop指令，nop是x86的小延迟函数：*/
+	if (! __is_smp)
+   		goto simple;
+
+	if (LLL_MUTEX_TRYLOCK (mutex) != 0)
+    {
+        int cnt = 0;
+        int max_cnt = MIN (MAX_ADAPTIVE_COUNT, mutex->__data.__spins * 2 + 10);
+        do
+        {
+            if (cnt++ >= max_cnt)
+        	{	
+            	LLL_MUTEX_LOCK (mutex);
+            	break;
+        	}
+
+#ifdef BUSY_WAIT_NOP
+        	BUSY_WAIT_NOP;//#define BUSY_WAIT_NOP   asm ("rep; nop")
+#endif
+		}
+    	while (LLL_MUTEX_TRYLOCK (mutex) != 0);
+
+    	mutex->__data.__spins += (cnt - mutex->__data.__spins) / 8;
+    }
+    assert (mutex->__data.__owner == 0);
+} else {
+    assert (type == PTHREAD_MUTEX_ERRORCHECK_NP);
+      /* Check whether we already hold the mutex.它会侦测一个线程重复申请锁的情况，如遇到，报EDEADLK，从而避免这种最简单的死锁情形。若无死锁情形，goto simple语句会跳到普通锁的处理流程。*/
+    if (__builtin_expect (mutex->__data.__owner == id, 0))
+        return EDEADLK;
+    goto simple;
+}
+```
+
+通过上面的代码我们可以看到获取锁的核心代码是*LLL_MUTEX_LOCK*宏，该宏的实现为：
+
+```cpp
+#define LLL_MUTEX_LOCK(mutex) \
+	lll_lock ((mutex)->__data.__lock, PTHREAD_MUTEX_PSHARED (mutex))//PTHREAD_MUTEX_PSHARED宏表示该锁是进程锁还是线程锁，0表示线程锁，128表示进程锁
+```
+
+通过该宏我们可以看到将mutex的\_\_data.\_\_lock字段传入了lll\_lock函数中进行lock状态的修改，lll_lock的实现代码如下：
+
+```c
+__lll_lock (int *futex, int private)
+{
+	int val = atomic_compare_and_exchange_val_24_acq (futex, 1, 0);
+	if (__glibc_unlikely (val != 0))
+	{
+		if (__builtin_constant_p (private) && private == LLL_PRIVATE)
+			__lll_lock_wait_private (futex);
+		else
+			__lll_lock_wait (futex, private);
+    }
+}
+```
+
+*atomic_compare_and_exchange_val_24_acq*和我们std::atomic的成员函数compare_exchange_strong的功能一样，若futex的值等于0，表示锁可以被当前线程占用，则将其置为1，val返回0；若futex值不等0，表示锁被其他线程占用，则futex不变，val返回1。后面判断若`val != 0`则调用`__lll_lock_wait`进行等待：
+
+```c
+/*
+futex有三种状态
+0 锁空闲
+1 没有waiter，解锁之后无需调用futex_wake
+2 有waiter，那么解锁之后需要调用futex_wake
+*/
+void __lll_lock_wait (int *futex, int private)
+{
+	/* 非第一个线程会阻塞在这里 */
+	if (*futex == 2)  
+		lll_futex_wait (futex, 2, private); /* Wait if *futex == 2.  */
+ 
+	/* 第一个线程会阻塞在这里，atomic_exchange_acq返回当前futex值并将其赋为2*/
+	while (atomic_exchange_acq (futex, 2) != 0)
+		lll_futex_wait (futex, 2, private); /* Wait if *futex == 2.  */
+}
+```
+
+最终在`__lll_lock_wait`中调用` lll_futex_wait  `，` lll_futex_wait  `是个宏，展开后为：
+
+```c
+#define lll_futex_wait(futex, val) \
+({ \
+...
+__asm __volatile (LLL_EBX_LOAD \
+	LLL_ENTER_KERNEL \
+	LLL_EBX_LOAD \
+	: "=a" (__status) \
+	: "0" (SYS_futex), LLL_EBX_REG (futex), "S" (0), \
+	"c" (FUTEX_WAIT), "d" (_val), \
+	"i" (offsetof (tcbhead_t, sysinfo)) \
+	: "memory"); \
+... \
+})
+```
+
+可以看到当发生竞争的时候，会调用SYS_futex系统调用， 调用futex系统调用的futex_wait操作进行排队。因为用户空间并不知道内核的futex队列中是否还有其它锁竞争的任务在等待，所以系统调用阻塞唤醒回到用户空间，对futex尝试上锁，必须以锁竞争状态来上锁，以使自己解锁时，会调用futex_wake。 futex的优点在于只有当处于竞争状态的时候才会调用系统调用陷入内核。
+
+### 16.3.2 常用函数
+
+```cpp
+void lock();//如果当前mutx被其他线程锁定，则该接口会阻塞当前线程直至解锁；如果呗同一个线程锁定，则会造成死锁
+native_handle_type native_handle();//和native_handle类似，在linux下会获得pthread_mutex_t
+bool try_lock();//若锁被其他线程占用会返回false，若被自己占用会造成死锁
+void unlock();
+```
+
+### 16.3.3 相关类
+
+ #### 16.3.3.1 lock_guard
+
+这个接口我们在前文介绍过，通过RAII实现，生成对象时就加锁，在析构时进行解锁，所以锁的生命周期和对象的生命周期一样，使用方式像下面这样：
+
+```cpp
+std::mutex mtx;
+{
+    std::lock_guard<std::mutex> lck (mtx);
+}//此时生命周期为大括号
+```
+
+对象不能复制只能移动。
+
+#### 16.3.3.2 unique_lock
+
+unique_lock和lock_guard类似，默认情况下锁的生命周期也是和对象一样，但是我们可以通过传入不同的参数进行灵活修改：
+
+| value       | description                                                  |
+| ----------- | ------------------------------------------------------------ |
+| *(no tag)*  | Lock on construction by calling member lock.                 |
+| try_to_lock | Attempt to lock on construction by calling member try_lock.  |
+| defer_lock  | Do not lock on construction (and assume it is not already locked by thread). |
+| adopt_lock  | Adopt current lock (assume it is already locked by thread).  |
+
+所以unique_lock有如下构造函数：
+
+```cpp
+unique_lock() noexcept;
+explicit unique_lock (mutex_type& m);
+unique_lock (mutex_type& m, try_to_lock_t tag);
+unique_lock (mutex_type& m, defer_lock_t tag) noexcept;
+unique_lock (mutex_type& m, adopt_lock_t tag);
+template <class Rep, class Period>
+unique_lock (mutex_type& m, const chrono::duration<Rep,Period>& rel_time);
+template <class Clock, class Duration>
+unique_lock (mutex_type& m, const chrono::time_point<Clock,Duration>& abs_time);
+unique_lock (const unique_lock&) = delete;
+unique_lock (unique_lock&& x);
+```
+
+可以看到我们还能设定加锁时间，另外我们也可以不在构造函数时设定这些属性，可以通过成员函数重新设定：
+
+```cpp
+explicit operator bool() const noexcept;//true is the object owns a lock on the managed mutex object.
+bool owns_lock() const noexcept;//true is the object owns a lock on the managed mutex object.
+mutex_type* release() noexcept;//Returns a pointer to the managed mutex object, releasing ownership over it.
+void lock();//Calling lock on a mutex object that has already been locked by other threads causes the current thread to block (wait) until it can own a lock to it.
+bool try_lock();
+template <class Rep, class Period>
+bool try_lock_for (const chrono::duration<Rep,Period>& rel_time);//加锁一段时间，加锁成功返回true
+template <class Clock, class Duration>
+bool try_lock_until (const chrono::time_point<Clock,Duration>& abs_time);//一段时间后加锁，加锁成功返回true	
+```
+
+## 16.4 *std::condition_variable*
+
+条件变量用于阻塞当前线程直至有信号量通知，举个例子来说：
+
+```cpp
+std::mutex mutex;
+std::condition_variable cv;
+std::string data;
+bool ready = false;
+bool processed = false;
+void Worker() {
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock, [] { return ready; });
+    std::cout << "worker is processing data..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    data += " done";
+    processed = true;
+    std::cout << "worker notify main thread" << std::endl;
+    lock.unlock();
+    cv.notify_one();
+}
+int main() {
+    std::thread worker(Worker);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::cout << "main thread is preparing for data..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        data = "sample data";
+        ready = true;
+        std::cout << "main thread get ready for data" << std::endl;
+    }
+    cv.notify_one();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [] { return processed; });
+    }
+    std::cout << "back to main thread, data:" << data << std::endl;
+    worker.join();
+    return 0;
+}
+```
+
+程序一开始先启动worker线程并获得mutex锁，之后调用std::condition_variable::wait阻塞等待ready返回true并释放mutex锁。与此同时主线程继续执行，使用lock_guard获得mutex锁，生成数据，将ready置成true，离开大括号作用域后lock_guard析构释放mutex锁并调用std::condition_variable::notify_one()通知wait的线程。此时主线程执行worker线程最初的行为并等待processed返回true。worker线程wait函数判断此时ready返回true不再阻塞当前线程，并获得mutex进行加锁，处理完数据之后对mutex进行解锁，最后通知主线程。此时主线程收到通知之后判断processed返回true后继续运行，最终结束程序。
+
+常用函数有：
+
+```cpp
+void notify_all() noexcept;//还有非成员函数void notify_all_at_thread_exit (condition_variable& cond, unique_lock<mutex> lck);
+void notify_one() noexcept;//如果有多个线程都在等待，会随机唤醒一个线程
+void wait (unique_lock<mutex>& lck);
+template <class Predicate>
+void wait (unique_lock<mutex>& lck, Predicate pred);//当callable的pred返回true才会执行wait，该操作相当于while (!pred()) wait(lck);
+template <class Clock, class Duration>
+    cv_status wait_until (unique_lock<mutex>& lck,
+                        const chrono::time_point<Clock,Duration>& abs_time);//当等待时间到了会返回cv_status::timeout，否则为cv_status::no_timeout
+template <class Clock, class Duration, class Predicate>
+       bool wait_until (unique_lock<mutex>& lck,
+                        const chrono::time_point<Clock,Duration>& abs_time,
+                        Predicate pred);
+```
+
+
 
 ## 16.5 *std::atomic*
+
+std::atomic<T>模板类，生成一个T类型的原子对象，并提供了系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic<T>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic<float>、atomic<double>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
+
+### 16.5.1 原子操作原理
+
+C++11新引入的std::atomic主要是通过硬件的cmpxchgl(CAS,compare and swap)指令实现，linux内核将cmpxchgl封装成函数cmpxchg，实现如下：
+
+```cpp
+#define cmpxchg( ptr, _old, _new ) { \  
+	volatile uint32_t *__ptr = (volatile uint32_t *)(ptr);   \  
+	uint32_t __ret;                                     \  
+	asm volatile( "lock; cmpxchgl %2,%1"           \  
+	: "=a" (__ret), "+m" (*__ptr)                \  
+	: "r" (_new), "0" (_old)                     \  
+	: "memory");                 \  
+	);                                             \  
+	__ret;                                         \ 
+}  
+```
+
+作用为将ptr的保存值和\_old进行比较，若相等则将\_new存入ptr，否则返回ptr保存的值。可以看到cmpxchgl指令前加了lock前缀，lock保证了指令不会受其他处理器或cpu核的影响。在PentiumPro之前，lock的实现，是通过锁住bus（总线），从而阻止其他cpu核的内存访问。可想而知，这种实现是非常低效的。从PentiumPro开始，lock只会阻塞其他cpu核对相关内存的缓存块的访问。
+
+std::mutex的加锁过程其实也是有cmpxchg参与，只不过当发生竞争的时候会陷入内核进行等待，这时候性能会比较低，所以能用原子操作的尽量使用原子操作。
+
+### 16.5.2 ABA问题
+
+CAS在执行过程中有可能会因为ABA问题导致结果错误，我们通过atomic实现一个stack来介绍什么是ABA问题：
+
+```cpp
+template<typename _Ty>
+struct LockFreeStackT
+{
+	struct Node
+	{
+		_Ty val;
+		Node* next;
+	};
+	LockFreeStackT() : head_(nullptr) {}
+	void push(const _Ty& val)
+	{
+		Node* node = new Node{ val, head_.load() };
+		while (!head_.compare_exchange_strong(node->next, node));
+	}
+	void pop()
+	{
+		Node* node = head_.load();
+		while (node && !head_.compare_exchange_strong(node, node->next);
+		if (node) delete node;
+	}
+	std::atomic<Node*> head_;
+};
+```
+
+整个逻辑很简单，如果新元素的next和栈顶一样，证明在你之前没人操作它，使用新元素替换栈顶退出即可；如果不一样，证明在你之前已经有人操作它，head\_在新建node之后被其他线程改动，而node->next仍然指向之前的head_，此时栈顶已发生改变，该函数会自动更新新元素的next值为改变后的栈顶；然后继续循环检测直到状态1成立退出。
+
+假设现有两条线程，栈为A->B，此时线程1对栈进行pop操作，在CAS之前CPU切换去处理线程2。线程2此时连pop两次，将A和B都pop出来，又进行push操作，由于操作系统很可能会分配刚刚释放的内存，所以重新new的数据可能就是刚刚释放地址。此时CPU切到线程1，线程1进行CAS判断此时的head仍然是A，所以将A pop出来将B这个已经释放的内存设为栈顶。解决ABA问题的办法无非就是通过打标签的方式给每个节点进行打标签，而不是通过地址进行判断。
+
+### 16.5.3 常用函数
+
+```cpp
+bool is_lock_free() const volatile;//判断atomic<T>中的T对象是否为lock free的，若是返回true。lock free(锁无关)指多个线程并发访问T不会出现data race，任何线程在任何时刻都可以不受限制的访问T
+bool is_lock_free() const;
+atomic() = default;//默认构造函数，T未初始化，可能后面被atomic_init(atomic<T>* obj,T val )函数初始化
+constexpr atomic(T val);//T由val初始化
+atomic(const atomic &) = delete;//禁止拷贝
+atomic & operator=(const atomic &) = delete;//atomic对象间的相互赋值被禁止，但是可以显示转换再赋值，如atomic<int> a=static_cast<int>(b)这里假设atomic<int> b
+atomic & operator=(const atomic &) volatile = delete;//atomic间不能赋值
+T operator=(T val) volatile;//可以通过T类型对atomic赋值，如：atomic<int> a;a=10;
+T operator=(T val);
+operator T() const volatile;//读取被封装的T类型值，是个类型转换操作，默认内存序是memory_order_seq需要其它内存序则调用load
+operator T() const;//如：atomic<int> a,a==0或者cout<<a<<endl都使用了类型转换函数
+//以下函数可以指定内存序memory_order
+T exchange(T val, memory_order = memory_order_seq_cst) volatile;//将T的值置为val，并返回原来T的值
+T exchange(T val, memory_order = memory_order_seq_cst);
+void store(T val, memory_order = memory_order_seq_cst) volatile;//将T值设为val
+void store(T val, memory_order = memory_order_seq_cst);
+T load(memory_order = memory_order_seq_cst) const volatile;//访问T值
+T load(memory_order = memory_order_seq_cst) const;
+bool compare_exchange_weak(T& expected, T val, memory_order = memory_order_seq_cst) volatile;//该函数直接比较原子对象所封装的值与参数expected的物理内容，所以某些情况下，对象的比较操作在使用 operator==()判断时相等，但compare_exchange_weak判断时却可能失败，因为对象底层的物理内容中可能存在位对齐或其他逻辑表示相同但是物理表示不同的值(比如true和2或3，它们在逻辑上都表示"真"，但在物理上两者的表示并不相同)。可以虚假的返回false(和expected相同)。若本atomic的T值和expected相同则用val值替换本atomic的T值，返回true;若不同则用本atomic的T值替换expected，返回false。
+bool compare_exchange_weak(T &, T, memory_order = memory_order_seq_cst);
+bool compare_exchange_strong(T &, T, memory_order = memory_order_seq_cst) volatile;//与compare_exchange_weak不同,strong版本的compare-and-exchange操作不允许返回 false，即原子对象所封装的值与参数expected的物理内容相同，比较操作一定会为true。不过在某些平台下，如果算法本身需要循环操作来做检查，compare_exchange_weak的性能会更好。因此对于某些不需要采用循环操作的算法而言,通常采用compare_exchange_strong更好
+bool compare_exchange_strong(T &, T, memory_order = memory_order_seq_cst);
+```
+
+### 16.5.4 自旋锁实现
+
+通过原子变量，我们可以自行实现标准库中没有的自旋锁：
+
+```cpp
+class spin_mutex {
+    std::atomic<bool> flag = ATOMIC_VAR_INIT(false);
+public:
+    spin_mutex() = default;
+    spin_mutex(const spin_mutex&) = delete;
+    spin_mutex& operator= (const spin_mutex&) = delete;
+    void lock() {
+        bool expected = false;
+        while(!flag.compare_exchange_strong(expected, true))
+        expected = false;
+    }
+    void unlock() {
+        flag.store(false);
+    }
+};
+```
+
+从网上的性能测试来看所有平台的自旋锁性能都无限接近无锁实现，并且使用方式和互斥锁几乎没有差别，但是仍然看场景，场景我们在16.3讨论过。
 
 ## 16.6 *std::future*
 
