@@ -104,7 +104,7 @@ void* __CRTDECL operator new(size_t const size)
 }
 ```
 
-所以我们不必纠结二者的差异，就当场一样的就好了。
+所以我们不必纠结二者的差异，就当成一样的就好了。
 
 *reference*:
 
@@ -586,19 +586,36 @@ MyNamespace::MyFunc(MyNamespace::value);
 |                 Tru64 C++ V6.5 （ANSI模式）                  |      `__7h__Fi`       |      `__7h__Fic`       |      `__7h__Fv`       |
 |                       Watcom C++ 10.6                        |      `W?h$n(i)v`      |      `W?h$n(ia)v`      |      `W?h$n()v`       |
 
-# 8.new/delete重载
+# 8.*new/delete*重载
+
+## 8.1 *new*
 
 *new operator*：指我们在C++里通常用到的关键字，比如`A* a = new A;`
 
 *operator new*：它是一个操作符，并且可被重载(类似加减乘除的操作符重载)
 
-当我们调用*new operator*时会调用*operator new*来分配内存，其中会调用`malloc`函数，接着会在分配内存上调用对象的构造函数，最后再返回这个指针。
+当我们调用*new operator*时会调用*operator new*来分配内存，其中会调用*malloc*函数，接着会在分配内存上调用对象的构造函数，最后再返回这个指针。但是*operator new*却不一定在会调用*malloc*函数，我们可以通过*operator new*在指定内存上面调用构造函数，该地址可以是堆也可以是栈，比如我希望在其中一个构造函数内调用另外一个构造函数：
+
+```cpp
+class A
+{
+public:
+    A(int x):x(x){}
+    A(A a)
+    {
+        //A(a.x);//这样调用返回的是一个临时A，我们需要在调用A(A a)这个构造函数作用域的地方还能维持该内存，所以我们需要像下面这样调用
+    	new (this) A(a.x);//this对于外面作用域是持续的，所以可以在this这个地址调用构造函数
+    }
+private:
+    int x;
+};
+```
 
 关于这两者的关系，我找到一段比较经典的描述（来自于www.cplusplus.com 见参考文献：
 
 > operator new can be called explicitly as a regular function, but in C++, new is an operator with a very specific behavior: An expression with the new operator, first calls function operator new (i.e., this function) with the size of its type specifier as first argument, and if this is successful, it then automatically initializes or constructs the object (if needed). Finally, the expression evaluates as a pointer to the appropriate type.
 
-通过重载这两个运算符我们可以记录内[存分配删除信息来构建内存池，或者添加一些打印信息的功能。
+通过重载这两个运算符我们可以记录内存分配删除信息来构建内存池，或者添加一些打印信息的功能。
 
 ```cpp
 #include <iostream>
@@ -647,6 +664,21 @@ int main()
 }
 
 ```
+
+new或者malloc出来的数组根据编译器的不同会把其大小存放在某个特定的内存，比如说VS2017中存放在了分配地址的前4个字节中，我们可以这么获得其大小：
+
+```cpp
+int *a = new int[125];
+cout << *((int*)a - 1) << endl;//打印125,只能是普通类型，如果是类结果还是125，这样就是错的
+```
+
+linux下我们可以通过函数malloc_usable_size来获得普通类型数组的大小，如果是类则会得到0，可能需要其他方式得到，这些都是编译器的特性，千万不能再实际产品中使用这种危险的方式获得数组的大小。
+
+## 8.2 *delete*
+
+delete和new一样也分为delete operator和operator delete，operator delete 一样可以进行重载，在这里我们不多介绍。只说一个delete和delete[]的区别：
+
+若指针为非基本类型，delete只会为指针的第一个元素调用析构函数，而delete[]会为每一个对象调用析构函数；若指针未基本类型
 
 # 9.类型转换
 
@@ -774,23 +806,23 @@ int main()
   }
   ```
 
-* *auto*有时候可能得不到我们预想的类型，其实主要是因为基础不够扎实，比如*vector<bool>*。*vector<bool>*是*vector<T>*的一个特例化(*template specialization*)，这个特例化要解决的问题是存储容量的问题。
+* *auto*有时候可能得不到我们预想的类型，其实主要是因为基础不够扎实，比如*vector\<bool\>*。*vector\<bool\>*是*vector\<T\>*的一个特例化(*template specialization*)，这个特例化要解决的问题是存储容量的问题。
 
   *To optimize space allocation, a specialization of vector for bool elements is provided.*
 
-  所以，它一般来说是以位的方式来存储*bool*的值。从这里我们可以看出，如果使用位来提升空间效率可能引出的问题就是时间效率了，因为我们的计算机地址是以字节为单位的，根据网友的实验遍历访问*vector<bool>*要比其他*vector<int>*耗时40倍以上。
+  所以，它一般来说是以位的方式来存储*bool*的值。从这里我们可以看出，如果使用位来提升空间效率可能引出的问题就是时间效率了，因为我们的计算机地址是以字节为单位的，根据网友的实验遍历访问*vector<bool>*要比其他*vector\<int\>*耗时40倍以上。
 
-  对于*vector<bool>*来说，它的*operator[]*返回的不是对应元素的引用，而是一个*member class std::vector< bool>::reference* 。对于普通*vector<T>*来说，若是使用*auto*声明变量对保存*opertor[]*返回的值，会如同上一段所说的去除引用，而对于*vector<bool> operator*返回的*std::vector< bool>::reference*是一个*member class*：
+  对于*vector\<bool\>*来说，它的*operator[]*返回的不是对应元素的引用，而是一个*member class std::vector\<bool\>::reference* 。对于普通*vector\<T\>*来说，若是使用*auto*声明变量对保存*opertor[]*返回的值，会如同上一段所说的去除引用，而对于*vector\<bool\> operator*返回的*std::vector\<bool\>::reference*是一个*member class*：
 
   > *This embedded class is the type returned by members of non-const [vector](http://www.cplusplus.com/vector) when directly accessing its elements. It accesses individual bits with an interface that emulates a reference to a `bool`.*
 
-  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector<bool>::operator[]*返回值是可以改变*vector<bool>*对应元素的内容的。如果我们试图用*auto&*来定义一个*vector<bool>::operator[]*返回的值，会出现如下编译错误：
+  根据定义这个类可以以*bit*为单位访问对应的*bool*，并且是以引用的方式，所以*auto*声明得到的*vector\<bool\>::operator[]*返回值是可以改变*vector\<bool\>*对应元素的内容的。如果我们试图用*auto&*来定义一个*vector\<bool\>::operator[]*返回的值，会出现如下编译错误：
 
   > error: invalid initialization of non-const reference of
   >  type 'std::_Bit_reference&' from an rvalue of type 'std::_Bit_iterator::referen
   > ce {aka std::_Bit_reference}'
 
-  这是因为对于*std::vector< bool>::reference*这种*proxy reference*来说，我们对其*dereference*并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决*vector<bool>*想遍历修改的问题，右值引用对*vector<T>*的其他类型同样适用：
+  这是因为对于*std::vector\<bool\>::reference*这种*proxy reference*来说，我们对其*dereference*并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决*vector\<bool\>*想遍历修改的问题，右值引用对*vector\<T\>*的其他类型同样适用：
 
   ```cpp
   vector<bool> v = {true, false, false, true};
@@ -862,7 +894,7 @@ func(x);  // x是左值
 * 1.所有右值引用折叠到右值引用上仍然是一个右值引用。（*T&& &&*变成 *T&&*）
 * 2.所有的其他引用类型之间的折叠都将变成左值引用。 （*T& &* 变成 *T&*; *T& &&* 变成 *T&*; *T&& &* 变成 *T&*）
 
-对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward<T>()*。如果传进来的参数是一个左值，*enter*函数会将T推导为*T&*，*forward*会实例化为*forward<T&>*，*T& &&*通过引用折叠会成为*T&*，所以传给*func*函数的还是左值；如果传进来的是一个右值，*enter*函数会将*T*推导为*T*，*forward*会实例化为*forward<T>*，*T&&*通过引用折叠还是*T&&*，所以传给*func*函数的还是右值：
+对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward\<T\>()*。如果传进来的参数是一个左值，*enter*函数会将T推导为*T&*，*forward*会实例化为*forward\<T&\>*，*T& &&*通过引用折叠会成为*T&*，所以传给*func*函数的还是左值；如果传进来的是一个右值，*enter*函数会将*T*推导为*T*，*forward*会实例化为*forward\<T\>*，*T&&*通过引用折叠还是*T&&*，所以传给*func*函数的还是右值：
 
 ``` cpp
 template<typename T>
@@ -1001,7 +1033,7 @@ unique_ptr<int> test()//返回值不能为rvalue reference，否则会产生dang
 unique_ptr<int> a1 = move(test());//ok
 ```
 
-*shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。
+*shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。*shared_ptr*的默认*deleter*为`[](T *a){delete a;}`，所以如果让*shared_ptr*管理对象数组时需要指定*deleter*为`[](T *a){delete[] a;}`，否则*shared_ptr*不能正确调用所有对象的析构函数。而由于*unique_ptr*不能在定义时管理数组，在*reset*时又不能*reset deleter*，所以*unique_ptr*在*C++17*前都不能管理数组。
 
 在实际使用*shared_ptr*的过程中我们不可避免的会出现循环引用的情况，比如下面这种情况：
 
@@ -1161,7 +1193,7 @@ int main(int argc, char* argv[])
 
 ### 15.1.1 *vector*
 
-*vector<bool>*为该模板类的特例化，我们在前文中已经介绍过了，不再赘述。
+*vector\<bool\>*为该模板类的特例化，我们在前文中已经介绍过了，不再赘述。
 
 #### 15.1.1.1 数据结构
 
@@ -1391,7 +1423,11 @@ size_type bucket_count() const noexcept;
 
 pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。实现POSIX 线程标准的库常被称作**Pthreads**，一般用于Unix-like POSIX 系统，如Linux、Solaris。Linux的pthread实现是*Native POSIX Thread Library* (*NPTL*)。在Linux2.6之前进程是内核调度的实体，在内核中并不能真正支持线程。但是它的确可以通过 `clone()` 系统调用将进程作为可调度的实体。这个调用创建了调用进程（calling process）的一个拷贝，这个拷贝与调用进程共享相同的地址空间。LinuxThreads 项目使用这个调用来完全在用户空间模拟对线程的支持。不幸的是，这种方法有一些缺点，尤其是在信号处理、调度和进程间同步原语方面都存在问题。另外，这个线程模型也不符合 POSIX 的要求。要改进 LinuxThreads，非常明显我们需要内核的支持，并且需要重写线程库。有两个相互竞争的项目开始来满足这些要求。一个包括 IBM 的开发人员的团队开展了 NGPT（Next-Generation POSIX Threads）项目。同时，Red Hat 的一些开发人员开展了 NPTL 项目。NGPT 在 2003 年中期被放弃了，把这个领域完全留给了 NPTL。
 
-> reference:https://www.ibm.com/developerworks/cn/linux/l-threading.html
+> reference:
+>
+> https://www.ibm.com/developerworks/cn/linux/l-threading.html
+>
+> https://computing.llnl.gov/tutorials/pthreads/
 
 pthread定义了一套C语言的类型、函数与常量，它以`pthread.h`头文件和一个线程库实现。
 
@@ -1832,7 +1868,7 @@ template<typename _Ty>
 struct LockFreeStackT
 {
 	struct Node
-	{
+    {
 		_Ty val;
 		Node* next;
 	};
@@ -1907,8 +1943,148 @@ public:
 
 从网上的性能测试来看所有平台的自旋锁性能都无限接近无锁实现，并且使用方式和互斥锁几乎没有差别，但是仍然看场景，场景我们在16.3讨论过。
 
-## 16.6 *std::future*
+## 16.6 *std::async*
+
+*std::async()*是一个接受回调(函数或函数对象)作为参数的函数模板，并有可能异步执行它们。*std::async*返回一个*std::future*，它存储由*std::async()*执行的函数对象返回的值。函数的参数可以作为函数指针参数后面的参数传递给*std::async()*。
+
+std::async中的第一个参数是启动策略，它控制std::async的异步行为，我们可以用三种不同的启动策略来创建std::async：
+std::launch::async：保证异步行为，即传递函数将在单独的线程中执行
+std::launch::deferred：当其他线程的future调用get()或者wait()才执行该函数
+std::launch::async | std::launch::deferred：默认行为。有了这个启动策略，它可以异步运行或不运行，这取决于系统的负载，但我们无法控制它。
 
 ## 16.7 *std::promise*
 
-## 16.8 *std::async*
+promise对象可以通过set_value保存某一类型 T 的值，该值可被 future 对象通过get阻塞读取（可能在另外一个线程中），因此 promise 也提供了一种线程同步的手段。在 promise 对象构造时可以和一个共享状态（通常是std::future，通过get_future）相关联，并可以在相关联的共享状态(std::future)上保存一个类型为 T 的值。
+
+可以通过 get_future 来获取与该 promise 对象相关联的 future 对象，调用该函数之后，两个对象共享相同的共享状态(shared state)
+
+- promise 对象是异步 Provider，它可以在某一时刻设置共享状态的值。
+- future 对象可以异步返回共享状态的值，或者在必要的情况下阻塞调用者并等待共享状态标志变为 ready，然后才能获取共享状态的值。
+
+举个例子来说明promise是如何使用的：
+
+```cpp
+#include <iostream>       // std::cout
+#include <functional>     // std::ref
+#include <thread>         // std::thread
+#include <future>         // std::promise, std::future
+
+void print_int(std::future<int>& fut) {
+    int x = fut.get(); // 获取共享状态的值.
+    std::cout << "value: " << x << '\n'; // 打印 value: 10.
+}
+
+int main ()
+{
+    std::promise<int> prom; // 生成一个 std::promise<int> 对象.
+    std::future<int> fut = prom.get_future(); // 和 future 关联.
+    std::thread t(print_int, std::ref(fut)); // 将 future 交给另外一个线程t.
+    prom.set_value(10); // 设置共享状态的值, 此处和线程t保持同步.
+    t.join();
+    return 0;
+}
+```
+
+future在主线程中和promise绑定，然后将future传给副线程，future在副线程中调用get阻塞等待共享变量ready。当主线程中的promise调用set_value后共享变量ready，副线程中的future唤醒线程并获得主线程set_value的值。
+
+常用函数有：
+
+```cpp
+future<T> get_future();//返回一个和promise绑定的future对象
+promise& operator= (promise&& rhs) noexcept;
+promise& operator= (const promise&) = delete;//禁用复制，允许移动构造
+void set_exception (exception_ptr p);//设置异常，当future调用get的时候抛出异常
+void set_exception_at_thread_exit (exception_ptr p);//线程结束时设置future同步的值
+void set_value (const T& val);
+void set_value (T&& val);
+void promise<R&>::set_value (R& val);   // when T is a reference type (R&)
+void promise<void>::set_value (void);   // when T is void
+void set_value_at_thread_exit (const T& val);
+void set_value_at_thread_exit (T&& val);
+void promise<R&>::set_value_at_thread_exit (R& val);// when T is a reference type (R&)
+void promise<void>::set_value_at_thread_exit (void);// when T is void
+```
+
+## 16.8 *std::future*
+
+std::future 可以用来获取异步任务的结果，因此可以把它当成一种简单的线程间同步的手段。std::future 通常由某个 Provider 创建，你可以把 Provider 想象成一个异步任务的提供者，Provider 在某个线程中设置共享状态的值，与该shared state相关联的 std::future 对象调用 get（通常在另外一个线程中） 获取该值，如果共享状态的标志不为 ready，则调用 std::future::get 会阻塞当前的调用者，直到 Provider 设置了共享状态的值（此时共享状态的标志变为 ready），std::future::get 返回异步任务的值或异常（如果发生了异常）。
+
+一个有效(valid)的 std::future 对象通常由以下三种 Provider 创建，并和某个共享状态相关联。Provider 可以是函数或者类，其实我们前面都已经提到了，他们分别是：
+
+- std::async构造函数返回一个future。
+- std::promise::get_future，get_future 为 promise 类的成员函数。
+- std::packaged_task::get_future，此时 get_future为 packaged_task 的成员函数。
+
+std::shared_future与std::future 类似，但是std::shared_future 可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
+
+常用函数有：
+
+```cpp
+T get();//Returns the value stored in the shared state (or throws its exception) when the shared state is ready.
+future& operator= (future&& rhs) noexcept;
+future& operator= (const future&) = delete;
+shared_future<T> share();//Returns a shared_future object that acquires the shared state of the future object.执行后原来的future变成valid
+bool valid() const noexcept;//默认构造函数的future和调用过get的future都返回false，除非被其他valid的future进行移动赋值
+void wait() const;//等待直到shared state变成ready
+template <class Rep, class Period>
+future_status wait_for (const chrono::duration<Rep,Period>& rel_time) const;//等待shared state变成ready或者时间到。若时间到了shared state还未ready则返回future_status::timeout；若ready返回future_status::ready；若future对象由async构造函数返回，并且async包含的是一个std::launch::deferred同步执行函数，则返回future_status::deferred
+template <class Clock, class Duration>
+future_status wait_until (const chrono::time_point<Clock,Duration>& abs_time) const;//等待直到一个特定时间点，若等待时间点在当前之前则返回future_status::timeout
+```
+
+# 17 并行编程
+
+## 17.1 指令集并行
+
+CPU流水线相关
+
+## 17.2 数据级并行
+
+### 17.2.1 *SIMD(Single instruction multidata)*
+
+SIMD即单指令流多数据流，是一种采用一个控制器来控制多个处理器，同时对一组数据（又称“数据向量”）中的每一个分别执行相同的操作从而实现空间上的并行性的技术。简单来说就是一个指令能够同时处理多个数据。
+
+1996年Intel推出了X86的MMX(MultiMedia eXtension)指令集扩展，MMX定义了8个寄存器，称为MM0到MM7，以及对这些寄存器进行操作的指令。每个寄存器为64位宽，可用于以“压缩”格式保存64位整数或多个较小整数，然后可以将单个指令一次应用于两个32位整数，四个16位整数或8个8位整数。
+
+intel在1999年又推出了全面覆盖MMX的SSE(*Streaming SIMD Extensions*， 流式SIMD扩展)指令集，并将其应用到Pentium III系列处理器上，SSE添加了八个新的128位寄存器(XMM0至XMM7)，而后来的X86-64扩展又在原来的基础上添加了8个寄存器(XMM8至XMM15)。SSE支持单个寄存器存储4个32位单精度浮点数，之后的SSE2则支持单个寄存器存储2个64位双精度浮点数，2个64位整数或4个32位整数或8个16位短整形。SSE2之后还有SSE3，SSE4以及AVX，AVX2等扩展指令集。
+
+AVX引入了16个256位寄存器(YMM0至YMM15)，AVX的256位寄存器和SSE的128位寄存器存在着相互重叠的关系(XMM寄存器为YMM寄存器的低位)，所以最好不要混用AVX与SSE指令集，否在会导致transition penalty（过渡处罚）。
+
+### 17.2.2 *SIMT(Single instruction multithread)*
+
+首先厘清概念：
+
+- SIMD：单指令多数据，首先获取多个数据，同时使用一条指令处理
+- SMT：同时多线程，不同线程之间的指令可以并行执行
+- SIMT：二者折中方案，单指令多线程，线程内部执行相同指令，但比SIMD更灵活，比SMT效率更高
+
+其次，对比SIMT与SIMD，上文说到，SIMT比SIMD更灵活，其主要体现在以下三点
+
+1. 单指令，可以访问多个寄存器组。
+2. 单指令，多种寻址方式。
+3. 单指令，多种执行路径
+
+每组线程中，如果出现分支指令，则不同线程之间串行执行，直到分支指令执行完毕，每组线程继续并行执行相同指令，下文会提供一种分支指令预测机制。
+
+最后，对比SIMT与SMT，上文说到，SIMT比SMT效率更高，主要体现在SIMT可同时运行的线程更多、寄存器更多这两点：
+
+1. 足够多的线程，可以获得足够高的吞吐率
+2. 一方面延迟是竭力避免的，另一方面寄存器的价格是可以接受的。
+
+## 17.3 线程级并行
+
+### 17.3.1 *SMT(Simultaneous multithreading)*
+
+### 17.3.2 OpenMP
+
+## 17.4 进程级并行
+
+### 17.4.1 MPI
+
+# 18.*CPU*
+
+CPU执行计算任务时都需要遵从一定的规范，程序在被执行前都需要先翻译为CPU可以理解的语言。这种规范或语言就是指令集（ISA，Instruction Set Architecture）。程序被按照某种指令集的规范翻译为CPU可识别的底层代码的过程叫做编译（compile）。x86、ARM v8、MIPS都是指令集的代号。指令集可以被扩展，如x86增加64位支持就有了x86-64。厂商开发兼容某种指令集的CPU需要指令集专利持有者授权，典型例子如Intel授权AMD，使后者可以开发兼容x86指令集的CPU。
+
+核心的实现方式被称为微架构（microarchitecture）。微架构的设计影响核心可以达到的最高频率、核心在一定频率下能执行的运算量、一定工艺水平下核心的能耗水平等等。此外，不同微架构执行各类程序的偏向也不同，例如90年代末期Intel的P6微架构就在浮点类程序上表现优异，但在整数类应用中不如同频下的对手。
+
+常见的代号如Haswell、Cortex-A15等都是微架构的称号。注意微架构与指令集是两个概念：指令集是CPU选择的语言，而微架构是具体的实现。i7-4770的核心是Haswell微架构，这种微架构兼容x86指令集。对于兼容ARM指令集的芯片来说这两个概念尤其容易混淆：ARM公司将自己研发的指令集叫做ARM指令集，同时它还研发具体的微架构如Cortex系列并对外授权。但是，一款CPU使用了ARM指令集不等于它就使用了ARM研发的微架构。Intel、高通、苹果、Nvidia等厂商都自行开发了兼容ARM指令集的微架构，同时还有许多厂商使用ARM开发的微架构来制造CPU。通常，业界认为只有具备独立的微架构研发能力的企业才算具备了CPU研发能力，而是否使用自行研发的指令集无关紧要。
