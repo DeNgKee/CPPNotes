@@ -835,6 +835,8 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
 首先我们来定义一下左值和右值，左值就是有名字的对象或者变量，可以被赋值或给别的对象或变量赋值，比如 `obj` , `*ptr` , `ptr[index]` , 和`++x` ；而右值就是临时变量（对象），不能被赋值，比如 `1729` , `x + y` , `std::string("meow")` , 和`x++`，另外还有函数的返回值 。
 
+## 12.1 右值引用
+
 在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造或者直接使用右值进行构造都会触发调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
 
 ```cpp
@@ -888,6 +890,124 @@ func(10); // 10是右值
 int x = 10;
 func(x);  // x是左值
 ```
+
+### 12.1.1 右值引用接受参数
+
+若我们的函数是右值引用，我们能接受哪些参数能，假设我们有一个函数：
+
+```cpp
+class Data {};
+void func(Data && data) {}
+```
+
+* 情形一：
+
+  ```cpp
+  Data data;
+  func(data); //[Error] cannot bind 'Data' lvalue to 'Data&&'
+  ```
+
+   data是个左值，不能绑定到右值上
+
+* 情形二：
+
+  ```cpp
+  Data data;
+  Data & d = data;
+  func(d); //[Error] cannot bind 'Data' lvalue to 'Data&&'
+  ```
+
+  d同样是一个左值
+
+* 情形三：
+
+   都说const 引用和 右值引用有相似之处，尝试传递const 引用 
+
+  ```cpp
+  
+  Data data;
+  const Data & d = data;
+  func(d); // [Error] invalid initialization of reference of type, 'Data&&' from expression of type 'const Data'
+  ```
+
+  仍然不能传
+
+* 情形四：
+
+  ```cpp
+  func(Data());
+  ```
+
+  ok，匿名对象为右值
+
+* 情形五：
+
+  标准做法 
+
+  ```cpp
+  Data data;   
+  func(std::move(data));//OK
+  ```
+
+* 情形六：
+
+  move一个做值引用：
+
+  ```cpp
+  Data data;
+  Data & p = data;   
+  func(std::move(p)); //OK
+  ```
+
+* 情形七：
+
+  把一个右值参数传递给const 引用类型
+
+  ```cpp
+  void func(const Data & data){}
+  void func_1(Data && data)
+  {
+  	func(data);//OK
+  } 
+  Data data;
+  func_1(std::move(data));
+  ```
+
+* 情形八：
+
+   直接声明一个右值引用，来做参数传递
+
+  ```cpp
+  Data p;
+  Data && p1 = std::move(p);
+  func(p1); // [Error] cannot bind 'Data' lvalue to 'Data&&'
+  ```
+
+  同样的错误，说明p1 还是左值 ， 我们可以通过这个方式验证一下 
+
+  ```cpp
+  void func(Data && data){}
+  void func_1(Data && data)
+  {
+  	func(data);//[Error] cannot bind 'Data' lvalue to 'Data&&'
+  } 
+  Data data;
+  func_1(std::move(data));
+  ```
+
+  这时候就需要我们下一节会介绍的万能引用出场了：
+
+  ```cpp
+  Data p;
+  Data && p1 = std::move(p);
+  func(std::forward<Data>(p1)); // OK
+  void func_1(Data && data)
+  {
+     func(std::forward<Data>(data));
+  }
+  ```
+
+## 12.2 万能引用
 
 这种未定的引用类型称为万能引用(*universal reference*)，这种类型必须被初始化，具体是什么类型取决于它的初始化。由于存在*T&&*这种未定的引用类型，当它作为参数时，有可能被一个左值引用或右值引用的参数初始化，这是经过类型推导的*T&&*类型，相比右值引用(*&&*)会发生类型的变化，这种变化就称为引用折叠，引用折叠规则如下：
 
@@ -1411,7 +1531,7 @@ size_type bucket_count() const noexcept;
 
 常用成员函数除*operator[]*外和*unordered_map*系列一致。
 
-# 16.并发编程模型和多线程程序实现  
+# 16.C++11并发编程
 
  ![Process-thread relationship](https://computing.llnl.gov/tutorials/pthreads/images/thread.gif) 
 
@@ -2075,11 +2195,21 @@ AVX引入了16个256位寄存器(YMM0至YMM15)，AVX的256位寄存器和SSE的1
 
 ### 17.3.1 *SMT(Simultaneous multithreading)*
 
+我们前面介绍过pthread，一个多线程库，这是软件层面的概念。如果多个线程想运行在同一个core上我们只能让任务分时服用，而硬件上如果一个CPU支持SMT，就是在能让多个线程共用一个CPU，但是分别用CPU上的不同的资源。CPU在执行一条机器指令时，并不会完全地利用所有的CPU资源，而且实际上，是有大量资源被闲置着的。超线程技术允许两个线程同时不冲突地使用CPU中的资源。比如一条整数运算指令只会用到整数运算单元，此时浮点运算单元就空闲了，若使用了超线程技术，且另一个线程刚好此时要执行一个浮点运算指令，CPU就允许属于两个不同线程的整数运算指令和浮点运算指令同时执行，这是真的并行。超线程的原理主要是两个逻辑核心各自有一套自己的线程状态存储设施：控制寄存器，通用寄存器。从而调度器可以同时调度两个线程，这个是关键。最终这么做的目的是充分利用执行引擎。
+
 ### 17.3.2 OpenMP
 
 ## 17.4 进程级并行
 
 ### 17.4.1 MPI
+
+MPI是一个跨语言的通讯协议，用于编写进程级并行程序，包括协议和和语义说明，他们指明其如何在各种实现中发挥其特性。MPI的目标是高性能，大规模性，和可移植性。一般用于HPC等大型计算集群场景。
+
+MPI有很多的实现，包括OpenMPI/IntelMPI/MPICH2/MVAPICH等。Nvidia的NCCL其实也算是MPI接口的一种实现，当前NCCL支持多GPU和多节点的通信，兼容MPI接口。
+
+以OpenMPI为例，节点之间的通信除了基本的TCP协议之外还支持RoCE和Infiniband等协议，能尽量减少节点之间通信的时延。
+
+除了用于HPC之外在当前深度学习训练场景下也常常用到MPI。Inspur公司就基于caffe实现了MPI版本来提升集群训练的性能。当然在当前NCCL已经兼容了MPI接口并且还支持GPUDirect的情况下也就不需要再使用其他版本的MPI了。除了caffe之外在tensorflow中做集群通信的主要是使用的自家的gRPC（当然GPU之间通信肯定是使用的NCCL），gRPC当然也能基于RDMA，但是由于gRPC本身层级过高，基于RDMA的性能并不如MPI，所以科大目前有团队把tensorflow改成了MPI版，但并不是主流。
 
 # 18.*CPU*
 
@@ -2088,3 +2218,4 @@ CPU执行计算任务时都需要遵从一定的规范，程序在被执行前�
 核心的实现方式被称为微架构（microarchitecture）。微架构的设计影响核心可以达到的最高频率、核心在一定频率下能执行的运算量、一定工艺水平下核心的能耗水平等等。此外，不同微架构执行各类程序的偏向也不同，例如90年代末期Intel的P6微架构就在浮点类程序上表现优异，但在整数类应用中不如同频下的对手。
 
 常见的代号如Haswell、Cortex-A15等都是微架构的称号。注意微架构与指令集是两个概念：指令集是CPU选择的语言，而微架构是具体的实现。i7-4770的核心是Haswell微架构，这种微架构兼容x86指令集。对于兼容ARM指令集的芯片来说这两个概念尤其容易混淆：ARM公司将自己研发的指令集叫做ARM指令集，同时它还研发具体的微架构如Cortex系列并对外授权。但是，一款CPU使用了ARM指令集不等于它就使用了ARM研发的微架构。Intel、高通、苹果、Nvidia等厂商都自行开发了兼容ARM指令集的微架构，同时还有许多厂商使用ARM开发的微架构来制造CPU。通常，业界认为只有具备独立的微架构研发能力的企业才算具备了CPU研发能力，而是否使用自行研发的指令集无关紧要。
+
