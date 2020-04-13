@@ -4,17 +4,17 @@
 
 ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义段。
 
-已经初始化的全局变量以及静态局部变量存放在*.data*段，没有初始化的存放在*.bss*段。由于没有初始化数据，所以其实不占用空间，因此在*ELF*文件中，*.bss*只是一个占位符，只有当程序真正运行起来之后才会在内存上真正的开辟*.bss*空间，并且在*.bss*空间中开辟空间，并且自动初始化为0。程序运行之后存放在全局静态区。
+已经初始化的全局变量以及静态局部变量存放在*.data*段，没有初始化的存放在*.bss*段。由于没有初始化数据，所以其实不占用空间，因此在*ELF*文件中，*.bss*只是一个占位符，只有当程序真正运行起来之后才会在内存上真正的开辟*.bss*空间，并且在*.bss*空间中将变量初始化为0。程序运行之后存放在全局静态区。
 
 常量（字符串常量，*const*变量）存放在*.rodata*段，程序运行后存放在常量区
 
 代码存放在代码段，程序运行后存放在代码区。
 
-当程序被加载到内存中后，操作系统负责加载上述各段，并为程序分配堆和栈。堆存放局部变量以及函数形参，有操作系统自行分配和释放；栈存放由*malloc*函数申请的空间，由程序员显示地分配和释放。
+当程序被加载到内存中后，操作系统负责加载上述各段，并为程序分配堆和栈。栈存放局部变量以及函数形参，有操作系统自行分配和释放；堆存放由*malloc*函数申请的空间，由程序员显示地分配和释放。
 
 ## 1.1 局部变量
 
-定义在某个函数内部或者某个*statement*内部的变量，生命周期为函数或者*statement*开始到结束。
+定义在某个函数内部或者某个*statement*或者*block*内部的变量，生命周期为函数或者*statement*开始到结束。
 
 ## 1.2 全局变量
 
@@ -22,7 +22,7 @@ ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义�
 
 若想实现在*main*函数之前执行某个函数，可以定义一个全局变量，变量值为某个函数的返回值即可。
 
-若想全局变量跨多个源文件，需要在一个文件里进行定义，其他文件进行*extern*声明。
+若想全局变量跨多个源文件，需要在一个文件里进行定义（若没有定义初始化则会发生链接错误），其他文件进行*extern*声明。
 
 ## 1.3 静态变量
 
@@ -38,7 +38,7 @@ ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义�
 
 首先是根据*Herb Sutter* (*served as secretary and convener of the ISO C++ standards committee for over 10 years*)对*heap*的说法:
 
-> The heap is the other dynamic memory area,allocated/freed by malloc/free and their variants.  Note that while the default global new and delete might be implemented in terms of malloc and free by a particular compiler, the heap is not the same as free store and memory allocated in one area cannot be safely deallocated in the other. Memory allocated from the heap can be used for objects of class type by placement-new construction and explicit destruction.  If so used, the notes about free store object lifetime apply similarly here.
+> The heap is the other dynamic memory area, allocated/freed by malloc/free and their variants.  Note that while the default global new and delete might be implemented in terms of malloc and free by a particular compiler, the heap is not the same as free store and memory allocated in one area cannot be safely deallocated in the other. Memory allocated from the heap can be used for objects of class type by placement-new construction and explicit destruction.  If so used, the notes about free store object lifetime apply similarly here.
 
 对于*free store*他觉得是：
 
@@ -118,13 +118,15 @@ void* __CRTDECL operator new(size_t const size)
 
 `char *b = “abc”;`
 
-上述两个类型为字符及字符串常量，存储在*ELF*文件的*.rodata*段，程序运行后加载到内存空间的常量区。
+上述两个类型为字符变量和字符串常量，字符串常量存储在*ELF*文件的*.rodata*段，程序运行后加载到内存空间的常量区。两个相等的字符串常量的地址是一样的，这点有点像java。
 
-`char c[] = “abc”;`此为*char*型数组，存放在堆区。
+`char c[] = “abc”;`和`char c[80];`都是*char*型数组，存放在堆区，c都为右值，不能进行赋值，但是c[0]为左值。
 
 *string*类型是模板参数为*char*的*basic_string*模板类的类型定义：
 
 `typedef basic_string<char, char_traits<char>, allocator<char>> string;`
+
+string可以说是vector\<char\>，但是多重载了一些操作符方便我们对字符串进行操作。
 
 # 3. 浮点类型
 
@@ -136,9 +138,7 @@ void* __CRTDECL operator new(size_t const size)
 
 若大于0则为规约数，指数为大小为$2^(exponent-1)-2^(e-1)+1$。
 
-*fp16*:
-
- ![IEEE 754r Half Floating Point Format.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/IEEE_754r_Half_Floating_Point_Format.svg/175px-IEEE_754r_Half_Floating_Point_Format.svg.png) 
+*fp16*: ![IEEE 754r Half Floating Point Format.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/IEEE_754r_Half_Floating_Point_Format.svg/175px-IEEE_754r_Half_Floating_Point_Format.svg.png) 
 
 *float*: ![Float example.svg](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Float_example.svg/590px-Float_example.svg.png) 
 
@@ -177,17 +177,17 @@ itype b;
 
 ```cpp
 std::sort(a,b,[&](itype a, itype b ){
-If(a[1]>b[1])
-    return true;
-return false;
+    if(a[1]>b[1])
+        return true;
+    return false;
 });
 ```
 
-function模板类可包装其他任何*callable*目标——函数、*lambda* 表达式、 *bind* 表达式或其他函数对象，还有指向成员函数指针和指向数据成员指针。我们可将匿名函数包装于*function*中使其成为有名函数，可使用*function*接受*bind*返回使成员函数作为线程入口函数：
+function模板类可包装其他任何*callable*目标——函数、*lambda* 表达式、 *bind* 表达式或函数对象，还有指向成员函数指针。我们可将匿名函数包装于*function*中使其成为有名函数，可使用*function*接受*bind*返回使成员函数作为线程入口函数：
 
 ```cpp
 using namespace std;
-using namespace std::placeholder;
+using std::placeholder;
 Class MyClass{
 public:
 void MyFunc(int a, int b)
@@ -198,7 +198,7 @@ private:
     int count;
 };
 MyClass mc;
-auto func = bind(MyClass::MyFunc,mc,_1,_2);
+function<void(int, int)> func = bind(MyClass::MyFunc,mc,_1,_2);
 int a = 10;
 int b = 100;
 Thread T(func, a, b);
@@ -218,12 +218,12 @@ cout<<”mc.count=”<<mc.count<<endl;
 
 ## 5.3 函数调用
 
-第一个进栈的是主函数中函数调用后的下一条指令（函数调用语句结束的下一条可执行语句）的地址，然后是函数的各个参数，在大多数的*C*编译器中，参数是由右往左入栈的，然后是函数中的局部变量。注意静态变量是不入栈的。当本次函数调用结束后，局部变量先出栈，然后是参数，最后栈顶指针指向最开始存的地址，也就是主函数中的下一条指令，程序由该点继续运行。
+对于一个程序来说第一个进栈的是主函数中函数调用后的下一条指令（函数调用语句结束的下一条可执行语句）的地址，然后是函数的各个参数，在大多数的*C*编译器中，参数是由右往左入栈的，然后是函数中的局部变量。注意静态变量是不入栈的。当本次函数调用结束后，局部变量先出栈，然后是参数，最后栈顶指针指向最开始存的地址，也就是主函数中的下一条指令，程序由该点继续运行。
 
 函数调用大致包括以下几个步骤：
 
-参数入栈：将参数从右向左依次压入系统栈中
 返回地址入栈：将当前代码区调用指令的下一条指令地址压入栈中，供函数返回时继续执行
+参数入栈：将参数从右向左依次压入系统栈中
 代码区跳转：处理器从当前代码区跳转到被调用函数的入口处
 栈帧调整：具体包括
 保存当前栈帧状态值，已备后面恢复本栈帧时使用（EBP入栈）
@@ -234,19 +234,73 @@ ESP：栈指针寄存器(extended stack pointer)，其内存放着一个指针�
 EBP：基址指针寄存器(extended base pointer)，其内存放着一个指针，该指针永远指向系统栈最上面一个栈帧的底部
 函数栈帧：ESP和EBP之间的内存空间为当前栈帧，EBP标识了当前栈帧的底部，ESP标识了当前栈帧的顶部。
 
- EIP：指令寄存器(extended instruction pointer)， 其内存放着一个指针，该指针永远指向下一条待执行的指令地址。 
+EIP：指令寄存器(extended instruction pointer)， 其内存放着一个指针，该指针永远指向下一条待执行的指令地址。 
 
 ## 5.4 函数副作用(*side effect*)
 
-函数副作用指当调用函数时，除了返回函数值之外，还对主调用函数产生附加的影响。例如修改全局变量（函数外的变量），修改参数或改变外部存储。函数副作用会给程序设计带来不必要的麻烦，给程序带来十分难以查找的错误，并降低程序的可读性。严格的函数式语言要求函数必须无副作用。没有副作用的函数为纯函数。
+函数副作用指当调用函数时，除了返回函数值之外，还对主调用函数产生附加的影响。例如修改全局变量（函数外的变量），修改参数或改变外部存储。函数副作用会给程序设计带来不必要的麻烦，给程序带来十分难以查找的错误，并降低程序的可读性。严格的函数式语言要求函数必须无副作用。没有副作用的函数为纯函数（pure function）。
 
 ## 5.5 函数参数传递
 
 分为值传递和引用传递，引用传递形参就是实参，不会新构造一个副本。
 
+传指针和传引用性能是一样，通过汇编我们能很容易观察出来：
+
+```cpp
+void func(int *a, int &b)
+{
+    int c = *a + b;
+    return;
+}
+mov         rax,qword ptr [a]  
+mov         eax,dword ptr [rax]  
+mov         rcx,qword ptr [b]  
+add         eax,dword ptr [rcx]
+```
+
+都是先将地址存入寄存器，再从地址中将值取出来。
+
+对于传值和传引用/传指针来说，内置类型肯定是传值要快的，但是对于比较复杂的对象或者结构体肯定还是应该传指针或者传引用。
+
 ## 5.6 缺省参数
 
 函数参数设置默认值之后调用时可缺省参数，但是只可以从右往左设置默认值，不能够中间空没有设置默认值的参数。
+
+缺省参数是在函数声明时指示好的，在定义时就不用指示了。在编译期决定了函数的缺省参数，所以对于虚函数来说最好不要设置缺省参数，因为一个是编译期决定的一个是运行时决定的，容易导致不是我们期望的结果。
+
+### 5.6.1 虚函数带默认参数
+
+若父类和子类虚函数都带默认参数，而由于默认参数是静态联编，而虚函数是动态联编，所以默认参数的选择是根据调用函数的对象指针类型决定的，但是调用子类虚函数还是父类的虚函数是根据该指针指向的具体对象决定的：
+
+```cpp
+class A {
+public:
+    virtual void display(std::string strShow = "I am Base class !")
+    {
+        std::cout << strShow << std::endl;
+    }
+private:
+    int a[20];
+};
+
+class B :public A
+{
+public:
+    virtual void display(std::string strShow = "I am Derive class !")
+    {
+        std::cout << "B:"<< strShow << std::endl;
+    }
+};
+int main()
+{
+    B b;
+    B *b1 = &b;
+    A *a = &b;
+    b1->display();//"B:I am Derive class !"
+    a->display();//由于对象实体都是B类，所以都是调用B的display函数，但是由于调用的指针是A类型，所以选择的是A类的默认参数，所以输出"B:I am Base class !"
+    return 0;
+}
+```
 
 ## 5.7 *inline*函数
 
@@ -256,7 +310,7 @@ EBP：基址指针寄存器(extended base pointer)，其内存放着一个指针
 
 + 2.*inline*函数在编译时展开，宏定义在预编译时替换
 
-+ 3.*inline*函数可以进行*debug*
++ 3.*inline*函数通过调整优化级别可以进行*debug*
 
 *inline*函数的函数体若小于调用函数产生的压栈出栈的代码大小则会使得程序占用内存变小，若函数体过大则会增大程序占用的内存大小。
 
@@ -264,19 +318,23 @@ EBP：基址指针寄存器(extended base pointer)，其内存放着一个指针
 
 若没有使用*inline*函数，程序至函数调用处需要跳转去函数体所在位置的代码，一般函数调用位置和函数体位置并不相近，这样容易形成缺页中断。
 
+**由于虚函数的运行时决定的，所以虚函数是不会被inline的，但是加了inline也不会报错**。
+
 ## 5.8 函数重载
 
-函数名称必须相同。
+根据标准重载函数的定义：
 
-参数列表必须不同（个数不同、类型不同、参数排列顺序不同等）。
+> When two or more different declarations are specified for a single name in the same scope, that name is said to be overloaded.
 
-函数的返回类型可以相同也可以不相同。
+简而言之在同一个作用域内两个函数可以同时存在并且被调用：
 
-仅仅返回类型不同不足以成为函数的重载。
+* 函数名称必须相同
+* 参数列表必须不同（个数不同、类型不同、参数排列顺序不同等）
+* 函数的返回类型可以相同也可以不相同
+* 仅仅返回类型不同不足以成为函数的重载
+* *C++*通过*name mangling*来实现函数重载，以及域名空间等作用域的功能
 
-*C++*通过*name mangling*来实现函数重载，以及域名空间等作用域的功能。
-
-子类不能重载父类的函数，子类父类属于不同的域名空间，如果基类声明被重载了，则应该在派生类中重新定义所有的基类版本。**如果在派生类中只重新定义一个版本，其他父类版本将会被隐藏，派生类对象将无法使用它们**，但是可以转成父类指针再进行调用，因为同名成员函数其实就是函数的重载，不同类型对象指针会调用不同类型的重载函数。
+子类不能重载父类的函数，子类父类属于不同的域名空间，如果基类声明被重载了，则应该在派生类中重新定义所有的基类版本。**如果在派生类中只重新定义一个版本，其他父类版本将会被隐藏，派生类对象将无法直接调用用它们**，但是可以转成父类指针再进行调用，因为访问控制是编译期决定的，所以编译期如果是父类调用就编译通过，但是运行时使用的子类对象实体。
 
 ```cpp
 class Base {
@@ -303,11 +361,19 @@ int main()
 }
 ```
 
-简而言之，重新定义函数，并不是重载。在派生类中定义函数，将不是使用相同的函数特征标覆盖基类声明，而是隐藏同名的基类方法，不管参数的特征标如何。如果我们需要在子类中使用所有父类定义的某个函数但又不想重写，可以使用如下方法：
+简而言之，重新定义函数，并不是重载。在派生类中定义函数，将不是使用相同的函数重载基类的函数，而是隐藏同名的基类方法，不管参数的特征如何。如果我们需要在子类中使用所有父类定义的某个函数但又不想重写，可以使用如下方法：
 
 ```cpp
-using A::print;
+using A::print;//namespace declaration
 ```
+
+### 5.8.1 重载函数匹配原则
+
+- 1.精确匹配，包括实参类型和形参类型相同，实参从数组或函数转换成对应的指针类型，向实参添加顶层const或从实参删除顶层const
+- 2.通过const转换实现的匹配
+- 3.通过类型提升实现的匹配
+- 4.通过算数类型转换实现的匹配
+- 5.通过类类型转换实现的匹配
 
 # 6. 类
 
@@ -315,7 +381,7 @@ using A::print;
 
 ## 6.1 访问控制 
 
-*C++*类的重要属性就是封装和继承。因此，最关键的问题就是权限 的问题，*public*，*protected*，*private*控制的就是访问权限。
+*C++*类的重要属性就是封装和继承。因此，最关键的问题就是权限问题，*public*，*protected*，*private*控制的就是访问权限，**这些访问权限控制都是在编译器决定的，在运行时的是进行不了访问控制的**，比如说父类对象可以调用子类私有虚函数。
 
 |                            | public | protected | private |
 | -------------------------- | ------ | --------- | ------- |
@@ -323,6 +389,7 @@ using A::print;
 | 友元函数是否可以访问       | Y      | Y         | Y       |
 | 子类是否可以访问           | Y      | Y         | N       |
 | 类的实例化对象是否可以访问 | Y      | N         | N       |
+| 类的静态函数               | Y      | Y         | Y       |
 
 三种继承方式导致的权限变化：
 
@@ -335,8 +402,8 @@ using A::print;
 通过对象我们可以直接访问对象的成员函数以及成员变量，我们也可以通过*pointer to member*来对成员进行访问：
 
 ```cpp
-class MyClass{private: int value;};
-int Myclass::*ptr = MyClass::value;
+class MyClass{public: int value;};
+int MyClass::*ptr = MyClass::value;
 MyClass mc;
 mc.value = 10;
 cout<<mc.*ptr<<endl;
@@ -372,42 +439,43 @@ class BigArray {
 
 + 1)    对象是类实例化（调用构造函数）之后的结果，仅对`public`成员有访问权限，释放时会自动调用析构函数。
 
-+ 2)    对象模型
++ 2)    对象模型（以下操作在64位下操作）
+  
   + a) *C++*中虚函数的作用主要是为了实现多态机制。多态，简单来说，是指在继承层次中，父类的指针可以具有多种形态——当它指向某个子类对象时，通过它能够调用到子类的函数，而非父类的函数。
   
   + b) 当一个类本身定义了虚函数，或其父类有虚函数时，为了支持多态机制，编译器将为该类添加一个虚函数指针（*vptr*）。虚函数指针一般都放在对象内存布局的第一个位置上，这是为了保证在多层继承或多重继承的情况下能以最高效率取到虚函数表。
   
-  + c) 当*vprt*位于对象内存最前面时，对象的地址即为虚函数指针地址。我们可以取得虚函数表指针的地址：
+  + c) 当*vp*tr位于对象内存最前面时，对象的地址即为虚函数指针地址。我们可以取得虚函数表指针的地址：
   
     ```cpp
     Base b;
-    int * vptrAdree = (int *)(&b); 
+    long long * vptrAdree = (long long *)(&b); 
     cout << "虚函数指针（vprt）的地址是：\t"<<vptrAdree << end;
     ```
 
-* * 我们强行把类对象的地址转换为*int\** 类型，取得了虚函数指针的地址。虚函数指针指向虚函数表,虚函数表中存储的是一系列虚函数的地址，虚函数地址出现的顺序与类中虚函数声明的顺序一致。对虚函数指针地址值，可以得到虚函数表的地址，也即是虚函数表第一个虚函数的地址:
+* * 我们强行把类对象的地址转换为*int\** 类型，取得了虚表指针。虚表指针指向虚函数表，虚函数表中存储的是一系列虚函数的地址，虚函数地址出现的顺序与类中虚函数声明的顺序一致。对虚表指针取值值，可以得到虚函数的地址，也即是虚函数表第一个虚函数的地址:
 
     ```cpp
     typedef void(*Fun)(void);
-    Fun vfunc = (Fun)*( (int *)*(int*)(&b));
-    cout << "第一个虚函数的地址是：" << (int *)*(int*)(&b) << endl;
+    Fun vfunc = (Fun)*( (long long *)*(long long*)(&b));
+    cout << "第一个虚函数的地址是：" << (long long *)*(long long*)(&b) << endl;
     cout << "通过地址调用虚函数Base::print()：";
     vfunc();
     ```
 
-* * 我们把虚表指针的值取出来： *\*(int\*)(&b)*，它是一个地址，第一个虚函数的地址
+* * 我们把虚表指针的值取出来： *\*(long long\*)(&b)*，它是一个地址，第一个虚函数的地址
 
-    把虚函数的地址强制转换成 *int\** :*(int\*) \*(int\*)(&b)*
+    把虚函数的地址强制转换成 *long long\** :*(long long\*) \*(long long\*)(&b)*
 
-    再把它转化成我们Fun指针类型： *(Fun)\*(int \*)\*(int\*)(&b)*
+    再把它转化成我们Fun指针类型： *(Fun)\*(long long \*)\*(long long\*)(&b)*
 
     这样，我们就取得了类中的第一个虚函数，我们可以通过函数指针访问它。
 
-    同理,第二个虚函数的地址为：*(int\*)(\*(int\*)(&b)+1)*
+    同理,第二个虚函数的地址为：*(long long\*)(\*(long long\*)(&b)+1)*
 
 + + d) 子类若*override*了一个父类的虚函数，其虚函数表中对应被*override*的虚函数会替换成自己*override*的函数，若有新增虚函数则在虚函数表后面累加新的虚函数地址。
 
-  + e) 所以继承类的对象内存分布为：
+  + e) 所以多继承类的对象内存分布为：
 
     | 地址 | 内容                 |
     | ---- | -------------------- |
@@ -417,7 +485,18 @@ class BigArray {
     |      | 第二个父类成员变量*m |
     |      | 自身的成员变量*k     |
 
-+ 3)    对象大小
+  * f) 对于菱形继承的对象来说，孙子类继承自两个父类，而两个父类继承自一个祖父类，此时两个父类都会调用一次祖父类的构造函数，并有一套祖父类成员变量的副本，所以孙子类就有两套祖父类成员变量的副本，虚继承则有另外一套内存模型。内存分布为：
+
+    | 地址 | 内容                                      |
+    | ---- | ----------------------------------------- |
+    |      | 第一个父类虚表指针                        |
+    |      | 祖父类成员变量\*n + 第一个父类成员变量*n1 |
+    |      | 第二个父类虚表指针                        |
+    |      | 祖父类成员变量\*m +第二个父类成员变量*m1  |
+    |      | 自身的成员变量*k                          |
+
++ 3)对象大小
+  
   + a) 空类的大小为1；
   + b) 类的（静态）成员函数，静态成员变量不占用类的空间；
   + c) 若有虚函数增加一个虚函数表指针的大小；
@@ -426,11 +505,18 @@ class BigArray {
 ## 6.3 构造函数/析构函数
 
 + 1)    构造函数在生成对象时调用，分为默认构造函数，拷贝构造函数，移动构造函数，赋值构造函数和移动赋值构造函数。
+
 + 2)    在构造函数后面加*default*关键字可将某个构造函数设置成默认的构造函数，比如若果我们没有定义构造函数，编译器会帮助我们生成默认无参且函数体为空的默认构造函数；但如果我们定义了一个有参数的构造函数，编译器便不会帮助我们生成默认构造函数，此时我们不能够像这样定义对象*MyClass mc*，但是我们可以通过添加*default*关键字恢复：
 
   `MyClass() = default;`
+  
 + 3)    在构造函数后面加*delete*关键字可将某个构造函数设为禁用，比如我们不希望对象进行拷贝构造而希望其进行移动构造这样能避免不必要的内存分配和拷贝，这样我们可在拷贝构造函数和赋值拷贝构造函数后面添加*delete*关键字。
+
 + 4） 在一个类的成员变量只有*primitive type*时我们直接将*primitive type*赋值给对象会发生隐式转换，这种时候编译器不会报错并且能正常运行，但是可能并不是我们想要的结果。我们希望能早早地在编译阶段就发现这些问题，这时候我们可以将对应的构造函数声明为*explicit*，这样编译器在静态检查阶段便能发现问题。
+
++ 5） 当父类的析构函数不声明成虚析构函数的时候，子类继承父类，父类的指针指向子类时，delete掉父类的指针，只调动父类的析构函数，而不调动子类的析构函数。 
+
++ 6） 当父类的析构函数声明成虚析构函数的时候，当子类继承父类，父类的指针指向子类时，delete掉父类的指针，先调动子类的析构函数，再调动父类的析构函数。 所以如果一个类会被继承，一定要将析构函数声明为虚函数，否则容易导致内存泄漏。
 
 ```cpp
 class A
@@ -509,9 +595,9 @@ a1 = test();
 
 + 3) 移动构造函数传入形参为对象的右值引用，将赋值对象使用*move*函数强转成右值引用之后再进行如同拷贝构造函数的调用方式时会调用移动构造函数。
 
-+ 4) 函数返回对象会先将局部对象赋给一个临时变量，由于函数返回值为右值，所以此时调用的是移动构造函数，等局部变量析构后再将临时对象赋给函数外的对象，此时仍然是移动构造函数，最后再将临时对象析构。
++ 4) 函数返回对象会先将局部对象赋给一个临时变量，由于函数返回值为右值，所以此时调用的是移动构造函数，等局部变量析构后再将临时对象赋给函数外的对象，此时仍然是移动构造函数，最后再将临时对象析构。当然编译器一般会有返回值优化，这样就不会产生临时变量。
 
-+ 5) 析构函数在对象到达生命周期时会自动调用，比如局部对象在函数结束时，对象指针被*delete*时。通过这种特性我们可以实现*RAII(resource acquisition is initialization)*，比如*c++11*中的*lock_guard*:
++ 5) 析构函数只能有一个，在对象到达生命周期时会自动调用，比如局部对象在函数结束时，对象指针被*delete*时。通过这种特性我们可以实现*RAII(resource acquisition is initialization)*，比如*c++11*中的*lock_guard*:
 
 ```cpp
 template <class Mutex> class lock_guard {
@@ -525,23 +611,29 @@ public:
 };
 ```
 
-### 6.3.1 返回值优化(*RVO*)
+### 6.3.1 列表初始化
 
- https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
+列表初始化成员变量的顺序跟成员变量声明的顺序一致。
+
+### 6.3.2 返回值优化(*RVO*)
+
+https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
 
 ## 6.4 类的静态成员函数和变量
 
-+ 1) 静态成员函数不能直接访问非静态成员变量，可以以传入对象的方式间接访问。
-
++ 1) 静态成员函数不能直接访问非静态成员变量，可以以传入对象的方式间接访问，并且可以访问类的私有成员变量。
 + 2) 非静态成员函数可以调用静态成员变量，因为静态成员变量属于整个类而非某个特定的对象，所有对象都共享该变量，在对象产生之前就有了，存储在全局静态存储区。
-
 + 3) 使用静态成员变量实现多个对象之间的数据共享不会破坏隐藏的原则，保证了安全性还能节省内存。
++ 4) 静态成员变量使用之前必须初始化（如`int MyClass::m_Number = 0;`，但是不能在头文件中初始化，否则会重复定义，链接会出错）。
++ 5) 静态成员函数属于整个类，所以不需要生成对象就可以调用。
 
-+ 4) 静态成员变量使用之前必须初始化（如`int MyClass::m_Number = 0;`）,否则链接会出错。
+## 6.5 调用虚函数
+
+因为基类构造器是在派生类之前执行的，所以在基类构造器运行的时候派生类的数据成员还没有被初始化。如果在基类的构造过程中对虚函数的调用传递到了派生类，派生类对象当然可以参照引用局部的数据成员，但是这些数据成员其时尚未被初始化。析构函数同理，当调用父类析构函数时子类已经完成析构，若在父类析构函数中调用虚函数进入子类访问成员变量同样是一些为初始化的值。
 
 ## 6.5 友元
 
-+ 1) 友元函数是可以直接访问类的私有成员的非成员函数。它是定义在类外的普通函数，它不属于任何类，但需要在类的定义中加以声明，声明时只需在友元的名称前加上关键字*friend*。友元函数能访问对象的私有成员的意思是在友元函数内，对象可以直接访问私有成员变量而不需要通过成员函数，而不是友元函数可以直接访问成员变量：
++ 1) 友元函数是可以直接访问类的私有成员的非成员函数。它是定义在类外的普通函数，它不属于任何类，但需要在类的定义中加以声明，声明时只需在友元的名称前加上关键字*friend*。友元函数能访问对象的私有成员的意思是在友元函数内，对象可以直接访问私有成员变量而不需要通过成员函数，而不是友元函数可以直接访问成员变量，和静态成员函数有区别：
 
   ```cpp
   class Derive
@@ -612,14 +704,192 @@ public:
   }
   ```
 
+* 3) 不能被重载的操作符有：
+  * .  (成员访问或点操作符)
+  * ?: (三元操作符或条件操作符)
+  * ::  (域操作符)
+  * .* (指向成员的指针操作符)
+  * sizeof(取对象大小操作符)
+  * typeid(对象类型操作符)
+
 ## 6.7 基类
 
 ## 6.8 派生类
 
+派生类构造的时候首先会调用基类的构造函数，但最终他们都是在同一块内存调用的构造函数，意思就是他们的this指针都是一块。
+
+所以派生类的构造顺序是：
+
+* 1、分配内存（父类加子类需要的空间）
+* 2、基类构造过程
+  * 1、初始化父类虚表指针
+  * 2、父类列表初始化
+  * 3、执行构造函数体 
+* 3、初始化子类虚表指针
+* 4、子类列表初始化
+* 5、执行子类构造函数体 
+
+若子类声明跟父类同名的函数则父类的成员函数会对子类隐藏，不能直接调用，除非使用域名空间或者父类指针进行调用：
+
+```cpp
+class Base {
+public:
+    void func1() {
+        cout << "Base func1" << endl;
+    }
+};
+
+class Derive : public Base
+{
+public:
+    void func1(int a) {
+        cout << "Derive func1" << endl;
+    }
+private:
+    int a = 10;
+};
+Derive *d = new Derive();
+d->Base::func1();
+static_cast<Base*>(d)->func1();
+delete d;
+```
+
+若派生类和基类拥有同名的成员变量则他们会同时存在于内存中，都会占用内存。因为他们属于不同的命名空间所以最终编译后的符号肯定不会是一样的，所以不会导致重复定义符号的问题。那么我们要怎么访问父类的同名变量呢，通过域名空间访问：
+
+```cpp
+class Base {
+public:
+    Base(int a) { this->a = a; }
+    int a;
+};
+class Base1 : public Base{
+public:
+    Base1(int a):Base(a + 1) { this->a = a; }
+    int a;
+};
+class Base2 : public Base1{
+public:
+    Base2(int a):Base1(a + 2) { this->a = a; }
+    int a;
+};
+Base2 b(1);
+cout << b.a << endl;// 1
+cout << b.Base1::a << endl;// 3
+cout << b.Base::a << endl;// 4
+cout << sizeof(b) << endl;// 12
+```
+
+如果父类成员变量是私有成员需要同名成员函数来访问我们也可能将子类强转成父类来对同名成员函数进行访问，这个我们在5.8函数重载章节有过介绍。
+
+### 6.8.1 虚继承
+
+在6.2章节中我们介绍了菱形继承的内存排布，对于菱形继承来说孙子类会有两个爷爷类的成员变量副本，但此时我们并不需要两个副本，这时候我们就需要虚继承。虚继承是在多个父类继承爷爷类的时候采用虚继承，这时候孙子类通过菱形继承爷爷类也只会有一份成员变量的副本，而进行虚继承的多个父类每一个都会增加一个虚基类指针。
+
+假设此时孙子类多继承的时候第一个父类没有进行虚继承，则爷爷类此时仍然会有多个副本，但是如果第一个父类是虚继承，无论后面的父类是否是虚继承子类中每个父类都会有虚基类指针，但是如果没有虚继承则会有多个爷爷类的成员变量副本。
+
+```cpp
+class Base
+{
+public:
+    //virtual void func(){}
+    int a;
+};
+
+class Derive :virtual  public Base
+{
+public:
+};
+class Derive1 :virtual public Base
+{
+public:
+};
+class GrandSon :public Derive, public Derive1
+{
+public:
+};
+GrandSon g;
+Derive d;
+Derive1 d1;
+sizeof(g);//12
+sizeof(d);//8
+sizeof(d1);//8
+/********************************************/
+class Base
+{
+public:
+    //virtual void func(){}
+    int a;
+};
+
+class Derive :virtual  public Base
+{
+public:
+};
+class Derive1 :public Base
+{
+public:
+};
+class GrandSon :public Derive, public Derive1
+{
+public:
+};
+GrandSon g;//此时虚继承没有生效，有两份爷爷类成员变量副本
+Derive d;
+Derive1 d1;
+sizeof(g);//12，两个虚基类指针
+sizeof(d);//8
+sizeof(d1);//4
+/********************************************/
+class Base
+{
+public:
+    //virtual void func(){}
+    int a;
+};
+
+class Derive :public Base
+{
+public:
+};
+class Derive1 :virtual public Base
+{
+public:
+};
+class GrandSon :public Derive, public Derive1
+{
+public:
+};
+GrandSon g;
+Derive d;
+Derive1 d1;
+sizeof(g);//8，一个虚基类指针
+sizeof(d);//4
+sizeof(d1);//8
+```
+
 ## 6.9 多态机制
 
-+ 1) 多态通过虚函数来实现，在运行时根据基类指针指向的具体子类调用特定被*override*的函数，具体虚函数表原理可查看*6.2*章节。
-+ 2) 若子类在需要重写的虚函数结尾加了*override*关键字则该函数一定是父类中存在可被重写的虚函数，否则在编译时会报错。
++ 1）多态通过虚函数来实现，在运行时根据基类指针指向的具体子类调用特定被*override*的函数，具体虚函数表原理可查看*6.2*章节。
++ 2）虚函数的要求是，函数原型相同，函数原型包括：函数返回值、函数名、参数列表、const修饰符。这里const修饰符包括函数返回值的修饰，函数形参的修饰，函数本身的修饰。只要有一处const没有对上 ，那么就不是虚函数的重载，而是发生了同名覆盖现象。 
++ 3）若子类在需要重写的虚函数结尾加了*override*关键字则该函数一定是父类中存在可被重写的虚函数，否则在编译时会报错。
++ 4）当父类声明某一函数为virtual之后子类同名函数会默认加上virtual。因此，在子类重新声明该虚函数时，可以加virtual，也可以不加virtual，但习惯上每一层声明函数时都加virtual,使程序更加清晰。
++ 5）多态和重载的区别在于多态通过虚函数表运行时选择调用函数，而重载根据参数不同在编译时就决定好了调用的函数。所以父类的析构函数一定要定义成虚函数，否则在父类指针指向子类对象时，父类指针调用析构函数只会调用父类析构函数而不会先调用子类析构函数。
+
+### 6.9.1 静态编联和动态编联
+
+多态机制是动态编联，在运行中在决定，而类似于重载，访问控制这些都属于静态的，在编译时决定的。我们只要掌握这些C++的一些特性属于运行时的还是编译时的就很好理解某些现象，运行时需要思考该对象当时的内存排布，而编译时主要看语法。比如说：
+
+* 虚函数带默认参数
+
+* 父类指针调用子类私有虚函数，父类该函数不是私有
+
+* 虚函数中访问this指针，在构造函数内部调用虚函数可以证明虚函数表是在构造函数调用之前初始化完成
+
+* 模板成员函数是在编译时展开的，有多少种调用类型就需要有多少个模板成员函数，所以C++中规定模板成员函数不能为虚函数
+
+  > Member function templates cannot be declared virtual. This constraint is imposed because the usual implementation of the virtual function call mechanism uses a fixed-size table with one entry per virtual function. However, the number of instantiations of a member function template is not fixed until the entire program has been translated. Hence, supporting virtual member function templates would require support for a whole new kind of mechanism in C++ compilers and linkers. In contrast, the ordinary members of class templates can be virtual because their number is fixed when a class is instantiated
+
+> reference: https://zhuanlan.zhihu.com/p/41309205 C++中虚函数、虚继承内存模型
 
 ## 6.10 派生类的构造函数
 
@@ -627,20 +897,47 @@ public:
 
 + 2) 派生类构造函数调用基类构造函数
 
-隐式调用：不指定基类的构造函数，默认调用基类默认构造函数（不带参数或者带默认参数值的构造函数）
+  隐式调用：不指定基类的构造函数，默认调用基类默认构造函数（不带参数或者带默认参数值的构造函数）
 
-显式调用：指定调用基类的某个构造函数。除非基类有默认构造函数，否则都要用显示调用。
+  显式调用：指定调用基类的某个构造函数。除非基类有默认构造函数，否则都要用显示调用。
 
-<派生类名>::<派生类名>(<形参声明>) : <基类名>(<参数表>)
-{
-<派生类构造函数的函数体>
-} 
+  <派生类名>::<派生类名>(<形参声明>) : <基类名>(<参数表>)
+  {
+  <派生类构造函数的函数体>
+  } 
+
+* 3) 派生类的复制/移动构造函数也必须要调用通过父类的复制/移动构造函数来复制/移动父类的成员变量，派生类只能通过列表的方式类调用父类的复制/移动构造函数。所以对于派生类的移动构造函数需要传入对象的右值引用进行std::move来触发父类的移动构造函数转移父类的成员。需要使用std::move的原因可以参考章节12.1.1，所有类型的函数的形参都是左值。
+* 4) 除了父类的无参数或者带默认参数值得构造函数会被自动调用外，其他的比如有参数构造函数，复制构造函数，移动构造函数都需要显示调用，否则父类的成员变量可能会没有进行初始化。
 
 ## 6.11 抽象类
 
 抽象类即为声明了纯虚函数的类，这种类不能实例化为对象，继承这种类的派生类需要实现对应的纯虚函数才能够进行实例化，否在在编译时会报错。通过这种方式可以提供一个单纯只提供接口的父类，而不需要对对应的接口进行某种特定的实现。
 
 `virtual void MyFunc() = 0;`
+
+抽象类的纯虚函数的实现可以由自身给出，也可以由派生类给出。若由自身给出，派生类可通过静态调用的方式调用父类的抽象接口：
+
+```cpp
+class Base
+{
+public:
+    virtual void func() = 0
+    {
+        cout << "Base func" << endl;
+    }
+};
+class Derived :public Base
+{
+public:
+    void func()
+    {
+        cout << "Derived func" << endl;
+    }
+};
+Base *b = new Derived();
+b->Base::func();//Base func
+b->func();//Derived func
+```
 
 # 6. 命名空间
 
@@ -656,39 +953,114 @@ void MyFunc(int value){
 MyNamespace::MyFunc(MyNamespace::value);
 ```
 
-若作用域符前面没有任何`namespace`或者类名，则表示访问的是全局变量。但这个规则不适用于*C++98*风格的枚举型别中定义的枚举量。这些枚举量的名字属于包含着这个枚举型别的作用域，这就意味着在此作用域内不能有其他实体取相同的名字。
+若作用域符前面没有任何`namespace`或者类名，则表示访问的是全局变量（包括无名命名空间）。但这个规则不适用于*C++98*风格的枚举型别中定义的枚举量。这些枚举量的名字属于包含着这个枚举型别的作用域，这就意味着在此作用域内不能有其他实体取相同的名字。
 
-## 6.1 限定作用域枚举类型
+若一个命名空间内部新定义了一个命名空间，则新定义的命名空间内部无法直接访问外部命名空间内的成员，除非指明作用域：
+
+```cpp
+namespace IBM
+{
+    int myfunc(int a)
+    {
+        cout << "IBM func" << endl;
+        return 0;
+    }
+    namespace SUN
+    {
+        int myfunc(double b)
+        {
+            int a = 10;
+            myfunc(a);//调用的是myfunc(double b)
+            IBM::myfunc(a);//这样即可调用myfunc(int a)
+            cout << "SUN func" << endl;
+            return 0;
+        }
+    }
+}
+```
+
+## 6.1 命名空间使用方法
+
+* 1） *using declarations*
+
+  ```cpp
+  using std::cout;
+  using std::endl;
+  ```
+
+  这样的方式就是using declarations。
+  我们可以这样简单地理解using declarations方式就是每次只引入一个命名空间成员，形式是 using namespace_name::member_name。使用using declarations方式的name的作用域从using declarations开始一直到当前作用域结束，都是可见的（用上面的例子来解释就是，cout这种缩写形式从using std::cout一直到main函数结束都是可用的）。而且它像普通变量和函数那样，如果在当前作用域中存在相同名称的实体，定义在外层的实体会被屏蔽，定义在本层的实体会和using进来的实体发生重复定义（**就是说引入的命名会覆盖全局变量，会和局部变量发生重复定义**）。这种方式在类中也可以使用，子类如果隐藏了父类的同名成员函数使用`using FatherClass::func;`可在子类中有所有该父类成员函数重载类型的访问权。
+
+* 2） *namespace aliases* 
+
+  ```cpp
+  namespace cplusplus_primer { /* ... */ }
+  namespace primer = cplusplus_primer;
+  ```
+
+  该方法给命名空间取别名。
+
+* 3） *using directives* 
+
+  这种方法就是使用整个命名空间：
+
+  ```cpp
+  using namespace std;
+  ```
+
+  虽然using directives方式对于编程者而言，似乎使用起来更加方便（只要在全局变量中使用using namespace namespace_name,之后该命名空间下的所有命名都可以使用简写形式），但是我们最好不要那么做。因为当我们引用多个库时，采用using directives的方式，又会重新引起命名冲突问题，那么命名空间也就失去了它最初的作用。
+
+  另外，using directive可以出现命名空间，函数和块中，但不能出现在类中，**其并不会覆盖同名局部变量，并且会和全局变量发生引用不明确的编译错误**。并且using directive还具有传递性：
+
+  ```cpp
+  #include <string>
+  #include <iostream>
+  namespace A {
+      using namespace std;
+  }
+  namespace B {
+      using namespace A;
+  }
+  namespace C {
+      using namespace B;
+      string a;
+  }
+  int main()
+  {
+      C::a = "X";
+      std::cout << C::a;//std在C中也生效了
+      return 0;
+  }
+  ```
+
+  > `[C++14: 7.3.4/4]:` For unqualified lookup (3.4.1), **the *using-directive* is transitive**: if a scope contains a *using-directive* that nominates a second namespace that itself contains *using-directives*, the effect is as if the using-directives from the second namespace also appeared in the first. *[..]* 
+
+## 6.2 限定作用域枚举类型
 
 先说一个通用规则，如果在一对大括号里声明一个名字，则该名字的可见性就被限定在括号括起来的作用于内。
 
 ```cpp
-enum Color { black, white, red};                 // black, white, red 和
-auto white = false;                              // 错误！因为 white
-	                                                 // 在这个定义域已经被声明过
+enum Color { black, white, red};
+auto white = false;// 错误！因为 white在这个定义域已经被声明过，但是如果Color如果定义的全局枚举类便不会出现重复定义
 ```
 
  事实就是枚举元素泄露到包含它的枚举类型所在的作用域中，对于这种类型的`enum`官方称作无作用域的（`unscoped`）。在`C++11`中对应的使用作用域的enums（`scoped enums`）不会造成这种泄露： 
 
 ```cpp
-enum class Color { black, white, red};            // black, white, red
-	                                                  // 作用域为 Color
-auto white = false;                               // fine, 在这个作用域内
-	                                                  // 没有其他的 "white"
-Color c = white;                                  // 错误！在这个定义域中
-	                                                  // 没有叫"white"的枚举元素
+enum class Color { black, white, red};            // black, white, red作用域为 Color
+auto white = false;                               // fine, 在这个作用域内没有其他的 "white"
+Color c = white;                                  // 错误！在这个定义域中没有叫"white"的枚举元素
 Color c = Color::white;                           // fine
-auto c = Color::white;                            // 同样没有问题（和条款5
-	                                                  // 的建议项吻合）
+auto c = Color::white;                            // 同样没有问题（和条款5的建议项吻合）
 ```
 
 # 7. Name Mangling
 
-*mangling*的目的就是为了给重载的函数不同的签名，以避免调用时的二义性调用。如果希望*C++*编译出来的代码不要被*mangling*，可以使用*extern "C" {}*来讲目标代码包含起来，这样能使得*C++*编译器编译出的二进制目标代码中的链接符号是未经过*C++*名字修饰过的，就像*C*编译器一样。
+*name mangling*的目的就是为了给重载的函数，不同作用域的变量或者函数不同的签名，以避免调用时的二义性调用。如果希望*C++*编译出来的代码不要被*mangling*，可以使用*extern "C" {}*来讲目标代码包含起来，这样能使得*C++*编译器编译出的二进制目标代码中的链接符号是未经过*C++*名字修饰过的，就像*C*编译器一样。
 
 如果想将*mangling*的符号恢复成可读的，可以使用*linux*下的*c++filt*。
 
-如果有一些编译器*mangling*的例子：
+如下有一些编译器*mangling*的例子：
 
 |                            编译器                            |     `void h(int)`     |  `void h(int, char)`   |    `void h(void)`     |
 | :----------------------------------------------------------: | :-------------------: | :--------------------: | :-------------------: |
@@ -715,7 +1087,7 @@ auto c = Color::white;                            // 同样没有问题（和条
 
 *new operator*：指我们在C++里通常用到的关键字，比如`A* a = new A;`
 
-*operator new*：它是一个操作符，并且可被重载(类似加减乘除的操作符重载)
+*operator new*：它是一个操作符，并且可被重载(类似加减乘除的操作符重载)，可重载全局operator new也可以重载成员函数operator new。
 
 当我们调用*new operator*时会调用*operator new*来分配内存，其中会调用*malloc*函数，接着会在分配内存上调用对象的构造函数，最后再返回这个指针。但是*operator new*却不一定在会调用*malloc*函数，我们可以通过*operator new*在指定内存上面调用构造函数，该地址可以是堆也可以是栈，比如我希望在其中一个构造函数内调用另外一个构造函数：
 
@@ -724,9 +1096,9 @@ class A
 {
 public:
     A(int x):x(x){}
-    A(A a)
+    A(A &a)
     {
-        //A(a.x);//这样调用返回的是一个临时A，我们需要在调用A(A a)这个构造函数作用域的地方还能维持该内存，所以我们需要像下面这样调用
+        //A(a.x);//这样调用返回的是一个临时A，我们需要在调用A(A &a)这个构造函数作用域的地方还能维持该内存，所以我们需要像下面这样调用
     	new (this) A(a.x);//this对于外面作用域是持续的，所以可以在this这个地址调用构造函数
     }
 private:
@@ -738,61 +1110,80 @@ private:
 
 > operator new can be called explicitly as a regular function, but in C++, new is an operator with a very specific behavior: An expression with the new operator, first calls function operator new (i.e., this function) with the size of its type specifier as first argument, and if this is successful, it then automatically initializes or constructs the object (if needed). Finally, the expression evaluates as a pointer to the appropriate type.
 
-通过重载这两个运算符我们可以记录内存分配删除信息来构建内存池，或者添加一些打印信息的功能。
+通过重载这两个运算符（不论是全局重载还是成员函数重载，成员函数重载会默认为static的，不论有没有加static）我们可以记录内存分配删除信息来构建内存池，或者添加一些打印信息的功能。
 
 ```cpp
 #include <iostream>
 using std::cout;
 using std::endl;
 
+#define MEMBER_NEW
 void* operator new(size_t size, const char *file, unsigned int line) {
-	cout << "file:" << file << " line:" << line << " size:" << size << " Call ::operator new" << endl;
-	void* tmp = malloc(size);
-	return tmp;
+    cout << "file:" << file << " line:" << line << " size:" << size << " Call ::operator new" << endl;
+    void* tmp = malloc(size);
+    return tmp;
 }
 void operator delete(void *ptr, const char *file, unsigned int line) {
-	cout << "Call ::operator delete" << endl;
-	free(ptr);
+    cout << "Call ::operator delete" << endl;
+    free(ptr);
 }
 class A {
 public:
-	A() {
-		cout << "A constructor" << endl;
-	}
-	~A()
-	{
-		cout << "A destructor" << endl;
-	}
+    A() {
+        cout << "A constructor" << endl;
+    }
+    ~A()
+    {
+        cout << "A destructor" << endl;
+    }
+#ifdef MEMBER_NEW
+    void *operator new(size_t size)
+    {
+        cout << "call member operator new" << endl;
+        void * a = ::operator new(size);
+        return a;
+    }
+    void operator delete(void *ptr)
+    {
+        cout << "call member operator delete" << endl;
+        ::operator delete(ptr);
+        return;
+    }
+#endif
 private:
-	int a[20];
+    int a[20];
 };
 
 //#define new new(__FILE__,__LINE__)
 
 int main()
 {
+#ifndef MEMBER_NEW
 #ifndef new
-	A *a = reinterpret_cast<A*>(operator new(sizeof(A), __FILE__, __LINE__));
-	new(a) A;
-	delete a;
+    char *c = reinterpret_cast<char*>(operator new(sizeof(A), __FILE__, __LINE__));
+    A *a = new(c) A;//在地址c上调用A的构造函数，返回指向对象a的指针，不一定是c的首地址
+    a->~A();
+    operator delete(c);//由于在c上调用A构造函数返回的对象指针可能不是c的首地址，所以我们需要手动析构a并且手动释放c
 
-	A *b = new(__FILE__, __LINE__) A;//这么写会调用重载的operator new 再调用A的构造函数
-	delete b;
+    A *b = new(__FILE__, __LINE__) A;//这么写会调用重载的operator new 再调用A的构造函数
+    delete b;
 #else
-	A *b = new A;
-	delete b;
+    A *b = new A;//内部调用全局重载的operator new
+    delete b;
 #endif
-	system("pause");
-	return 0;
+#else
+    A *b = new A;//内部调用成员函数重载的operator new
+    delete b;
+#endif
+    return 0;
 }
-
 ```
 
 new或者malloc出来的数组根据编译器的不同会把其大小存放在某个特定的内存，比如说VS2017中存放在了分配地址的前4个字节中，我们可以这么获得其大小：
 
 ```cpp
 int *a = new int[125];
-cout << *((int*)a - 1) << endl;//打印125,只能是普通类型，如果是类结果还是125，这样就是错的
+cout << *((int*)a - 1) << endl;//打印125
 ```
 
 linux下我们可以通过函数malloc_usable_size来获得普通类型数组的大小，如果是类则会得到0，可能需要其他方式得到，这些都是编译器的特性，千万不能再实际产品中使用这种危险的方式获得数组的大小。
@@ -801,7 +1192,9 @@ linux下我们可以通过函数malloc_usable_size来获得普通类型数组的
 
 delete和new一样也分为delete operator和operator delete，operator delete 一样可以进行重载，在这里我们不多介绍。只说一个delete和delete[]的区别：
 
-若指针为非基本类型，delete只会为指针的第一个元素调用析构函数，而delete[]会为每一个对象调用析构函数；若指针未基本类型则没有区别。
+若指针为非基本类型，delete只会为指针的第一个元素调用析构函数，而delete[]会为每一个对象调用析构函数；若指针未基本类型则不用delete[]也能正常将指针释放。
+
+另外delete operator一个空指针是不会报错的，其内部应该会做相应的判断，因为如果指针未空delete operator内部并没有调用operator delete。
 
 # 9. 类型转换
 
@@ -829,11 +1222,27 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
   * 该转换涉及面向对象的多态性和程序运行时的状态,也与编译器的属性设置有关.所以不能完全使用C语言的强制转换替代
 
-  * 从子类到基类不会有任何问题
+  * 转换时会对*RTTI*(*runtime type information*)进行检查，由于需要*RTTI*，所以需要有虚函数表，否则会编译错误（即dynamic_cast的操作数必须包含多态类类型），所以需要有虚函数。子类指针或引用转成父类指针或引用是安全的。对于父类转成子类，若父类指针或引用确实指向一个子类对象则转换成功，若没有则返回*nullptr*。
 
-  * 从基类到子类会对*RTTI*(*runtime type information*)进行检查，由于需要*RTTI*，所以需要有虚函数表，所以需要有虚函数，若没有虚函数则会出现编译错误；若子类拥有父类没有的成员，则函数会返回*nullptr*。
-
-    *typeid*运算符也是读取*RTTI*的机制，同样需要有虚函数，在生成虚表之后上面会挂一个*type_info*结构体，通过这个结构体父类指针在运行时可以读取出相关的信息进行判断。而*sizeof*运算符则是在编译时求值，只关心静态声明的类型，不过也可以有运行时的语义，当*sizeof*的参数是[Variable-Length Array](https://link.zhihu.com/?target=https%3A//en.wikipedia.org/wiki/Variable-length_array)时。
+    *typeid*运算符也是读取*RTTI*的机制，同样需要有虚函数才能在运行时读取正确的类型，否则将是静态类型。在生成虚表之后上面会挂一个*type_info*结构体，通过这个结构体父类指针在运行时可以读取出相关的信息进行判断。
+    
+    ```cpp
+    struct Base {}; // non-polymorphic
+    struct Derived : Base {};
+     
+    struct Base2 { virtual void foo() {} }; // polymorphic
+    struct Derived2 : Base2 {};
+    Derived d1;
+    Base& b1 = d1;
+    std::cout << "reference to non-polymorphic base: " << typeid(b1).name() << '\n';
+    //打印Base
+    Derived2 d2;
+    Base2& b2 = d2;
+    std::cout << "reference to polymorphic base: " << typeid(b2).name() << '\n';
+    //打印Derived2
+    ```
+    
+    而*sizeof*运算符则是在编译时求值，只关心静态声明的类型，不过也可以有运行时的语义，当*sizeof*的参数是[Variable-Length Array](https://link.zhihu.com/?target=https%3A//en.wikipedia.org/wiki/Variable-length_array)时。
     
     > a) If expression is a [glvalue expression](https://link.zhihu.com/?target=http%3A//en.cppreference.com/w/cpp/language/value_category) that identifies an object of a polymorphic type (that is, a class that declares or inherits at least one [virtual function](https://link.zhihu.com/?target=http%3A//en.cppreference.com/w/cpp/language/virtual)), the typeid expression evaluates the expression and then refers to the [std::type_info](https://link.zhihu.com/?target=http%3A//en.cppreference.com/w/cpp/types/type_info) object that represents the dynamic type of the expression. If the glvalue expression is obtained by applying the unary * operator to a pointer and the pointer is a null pointer value, an exception of type [std::bad_typeid](https://link.zhihu.com/?target=http%3A//en.cppreference.com/w/cpp/types/bad_typeid) or a type derived from [std::bad_typeid](https://link.zhihu.com/?target=http%3A//en.cppreference.com/w/cpp/types/bad_typeid) is thrown.
 
@@ -855,7 +1264,7 @@ delete和new一样也分为delete operator和operator delete，operator delete �
   auto closure = [](const int&, const int&) {}
   ```
 
-* 在*C++14*的泛型*lambda*表达式中，我们还可以将参数定义成*auto*类型，通过这个我们可以实现*ChurchNumber*，后续在13章作介绍；
+* 在*C++14*的泛型*lambda*表达式中，我们还可以将参数定义成*auto*类型（函数形参不行），通过这个我们可以实现*ChurchNumber*，后续在13章作介绍；
 
   ``` cpp
   auto closure = [](auto x, auto y) { return x * y;}
@@ -893,7 +1302,7 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
   其中的*auto*在编译时会替换成函数返回的表达式，再通过*decltype*来推导其类型。
 
-* 当不声明为引用类型时，*auto*的初始化表达式即使是引用，编译器也并不会将该变量推导为对应类型的引用，*auto*的推导结果等同于初始化表达式去除引用和*const qualifier*，所以在实际编码中我们需要显式的声明引用。当声明为引用时*auto*的推导结果能推导出正确的类型，其结果能保留初始化表达式的*qualifier*：
+* 当不声明为引用类型时，*auto*的初始化表达式即使是引用，编译器也并不会将该变量推导为对应类型的引用，*auto*的推导结果等同于初始化表达式去除引用和*const qualifier*，所以在实际编码中我们需要显示的声明引用和指针。当声明为引用或指针时*auto*的推导结果能推导出正确的类型，其结果能保留初始化表达式的*qualifier*：
 
   ```cpp
   #include <iostream>
@@ -927,15 +1336,21 @@ delete和new一样也分为delete operator和operator delete，operator delete �
       //++(*i);  error C3892: “i”: 不能给常量赋值
       auto j = i;
       //++(*j); error C3892: “j”: 不能给常量赋值
+      int a3[3] = { 1, 2, 3 };
+      auto b3 = a3;
+      cout << typeid(b3).name() << endl;//int * 
+      int a7[3] = { 1, 2, 3 };
+      auto & b7 = a7;
+      cout << typeid(b7).name() << endl;//int[3]
       return 0;
   }
   ```
 
 * *auto*有时候可能得不到我们预想的类型，其实主要是因为基础不够扎实，比如*vector\<bool\>*。*vector\<bool\>*是*vector\<T\>*的一个特例化(*template specialization*)，这个特例化要解决的问题是存储容量的问题。
 
-  *To optimize space allocation, a specialization of vector for bool elements is provided.*
+  >  *To optimize space allocation, a specialization of vector for bool elements is provided.*
 
-  所以，它一般来说是以位的方式来存储*bool*的值。从这里我们可以看出，如果使用位来提升空间效率可能引出的问题就是时间效率了，因为我们的计算机地址是以字节为单位的，根据网友的实验遍历访问*vector<bool>*要比其他*vector\<int\>*耗时40倍以上。
+  所以，它一般来说是以位的方式来存储*bool*的值。从这里我们可以看出，如果使用位来提升空间效率可能引出的问题就是时间效率了，因为我们的计算机地址是以字节为单位的，根据网友的实验遍历访问*vector\<bool\>*要比其他*vector\<int\>*耗时40倍以上。
 
   对于*vector\<bool\>*来说，它的*operator[]*返回的不是对应元素的引用，而是一个*member class std::vector\<bool\>::reference* 。对于普通*vector\<T\>*来说，若是使用*auto*声明变量对保存*opertor[]*返回的值，会如同上一段所说的去除引用，而对于*vector\<bool\> operator*返回的*std::vector\<bool\>::reference*是一个*member class*：
 
@@ -947,18 +1362,20 @@ delete和new一样也分为delete operator和operator delete，operator delete �
   >  type 'std::_Bit_reference&' from an rvalue of type 'std::_Bit_iterator::referen
   > ce {aka std::_Bit_reference}'
 
-  这是因为对于*std::vector\<bool\>::reference*这种*proxy reference*来说，我们对其*dereference*并不会得到一个普通的*bool &*，取而代之的是一个临时对象，所以取引用会导致编译错误。这时候我们使用右值引用来定义这个变量可以解决*vector\<bool\>*想遍历修改的问题，右值引用对*vector\<T\>*的其他类型同样适用：
+  这是因为对于*std::vector\<bool\>::reference*这种*proxy reference*来说，我们对其*reference*并不会得到一个普通的*bool &*，所以取引用会导致编译错误。这时候我们使用右值引用或者不加任何限定符来定义这个变量可以解决*vector\<bool\>*想遍历修改的问题，auto&&对*vector\<T\>*的其他类型同样适用，但此时并不是右值引用绑定到左值，而是auto&&发生了引用折叠，最终还是左值引用：
 
   ```cpp
   vector<bool> v = {true, false, false, true};
   // Invert boolean status
   for (auto&& x : v)  // <-- note use of "auto&&" for proxy iterators
       x = !x;
+  for (auto x : v)  // ok
+      x = !x;
   ```
 
 # 12. 移动语义和右值引用
 
-首先我们来定义一下左值和右值，左值就是有名字的对象或者变量，可以被赋值或给别的对象或变量赋值，比如 `obj` , `*ptr` , `ptr[index]` , 和`++x` ；而右值就是临时变量（对象），不能被赋值，比如 `1729` , `x + y` , `std::string("meow")` , 和`x++`，另外还有函数的返回值 。
+首先我们来定义一下左值和右值，左值就是有名字的对象或者变量，可以被赋值或给别的对象或变量赋值，比如 `obj` , `*ptr` , `ptr[index]` , 和`++x` ；而右值就是临时变量（对象），不能被赋值，比如 `1729` , `x + y` , `std::string("hello world")` , 和`x++`，另外还有函数的返回值（除非返回引用） 。
 
 ## 12.1 右值引用
 
@@ -976,9 +1393,9 @@ A(A &&a)
 如果我们为对象实现了移动构造函数，在函数中返回局部对象时我们也会触发移动语义：
 
 * 1) 局部变量赋给临时变量时触发移动构造函数（没有则触发拷贝构造函数）
-* 2) 临时变量赋值给函数已经声明过的外部变量时会触发移动赋值构造函数（这种情况没有会编译出错）
+* 2) 临时变量赋值给函数已经声明过的外部变量时会触发移动赋值构造函数（这种情况没有移动赋值构造函数会编译出错）
 * 3) 若是声明时赋值则触发移动构造函数（若没有可以触发拷贝构造函数）
-* 4) 若移动赋值构造函数返回值会在临时对象赋值给外部对象时再调用一次复制构造函数，这是因为又实例化了一个新的对象
+* 4) 若移动赋值构造函数返回值而不是引用的话会在临时对象赋值给外部对象时再调用一次复制构造函数，这是因为又实例化了一个新的对象
 * 5) 这一段可结合*6.3*章节一起看
 
 ```cpp
@@ -1006,7 +1423,7 @@ std::vector<int> vec(100,1);
 std::vector<int> vec1 = move(vec);
 ```
 
-而对于模板函数来说，`void func(T&& param)`其中的*T&&*并不一定表示的是右值，它绑定的类型是未知的，既可能是右值，也可能是左值，需要类型推导之后才会知道，比如：
+而对于模板函数来说，`void func(T&& param)`其中的*T&&*并不一定表示的是右值（auto&&和这个原理一样），它绑定的类型是未知的，既可能是右值，也可能是左值，需要类型推导之后才会知道，比如：
 
 ```cpp
 template<typename T>
@@ -1018,7 +1435,7 @@ func(x);  // x是左值
 
 ### 12.1.1 右值引用接受参数
 
-若我们的函数是右值引用，我们能接受哪些参数能，假设我们有一个函数：
+若我们的函数是右值引用，我们能接受哪些参数呢，假设我们有一个函数：
 
 ```cpp
 class Data {};
@@ -1046,7 +1463,7 @@ void func(Data && data) {}
 
 * 情形三：
 
-   都说const 引用和 右值引用有相似之处，尝试传递const 引用 
+   都说const 引用和右值引用有相似之处，尝试传递const引用 
 
   ```cpp
   
@@ -1055,7 +1472,7 @@ void func(Data && data) {}
   func(d); // [Error] invalid initialization of reference of type, 'Data&&' from expression of type 'const Data'
   ```
 
-  仍然不能传
+  仍然不能传，证明const &仍然是左值
 
 * 情形四：
 
@@ -1092,7 +1509,7 @@ void func(Data && data) {}
   void func(const Data & data){}
   void func_1(Data && data)
   {
-  	func(data);//OK
+  	func(data);//OK，此时data仍然为左值
   } 
   Data data;
   func_1(std::move(data));
@@ -1108,7 +1525,7 @@ void func(Data && data) {}
   func(p1); // [Error] cannot bind 'Data' lvalue to 'Data&&'
   ```
 
-  同样的错误，说明p1 还是左值 ， 我们可以通过这个方式验证一下 
+  同样的错误，说明p1还是左值 ， 我们可以通过这个方式验证一下 
 
   ```cpp
   void func(Data && data){}
@@ -1128,7 +1545,7 @@ void func(Data && data) {}
   func(std::forward<Data>(p1)); // OK
   void func_1(Data && data)
   {
-     func(std::forward<Data>(data));
+     func(std::forward<Data>(data));//这种情况其实是forward将data强转成了右值引用，没有发生引用折叠，作用如同move
   }
   ```
 
@@ -1173,6 +1590,14 @@ void enter(T&& t) {
 [capture list] (params list) -> return type {function body};
 ```
 
+其中`-> return type`可单独省略，但是`params list`必须和`-> return type`一起省略，比如可以写成以下模式：
+
+```cpp
+auto test = []()->int{return 0;};//ok
+auto test = [](){return 0};//ok
+auto test = []->int{}//error	
+```
+
 []中我们可以定义好闭包变量的捕获方式：
 
 ```cpp
@@ -1184,7 +1609,7 @@ void enter(T&& t) {
 [=, &z]   //z按引用捕获. 其它变量按值捕获
 ```
 
-对于成员函数中的*lambda*表达式如果我们期望成员变量按值捕获要注意不能直接用*[=]*让任何外部变量都隐式按值捕获，因为捕获了*this*之后其实是能够操作所有成员变量，这样所有成员变量实际是按引用捕获的，所以应该明确写出对*this*的捕获：
+成员函数中的lambda表达式是不能直接捕获成员变量的，只能捕获this指针。对于成员函数中的*lambda*表达式如果我们期望成员变量按值捕获要注意不能直接用*[=]*让任何外部变量都隐式按值捕获，因为捕获了*this*之后其实是能够操作所有成员变量，这样所有成员变量实际是按引用捕获的，所以应该明确写出对*this*的捕获：
 
 ```cpp
 class MyClass {
@@ -1206,7 +1631,7 @@ private:
 
 ()中我们定义了需要直接直接传入*lambda*表达式的形参；
 
-->之后我们定义的是返回值类型，当然我们可以将其隐藏，编译器会根据 *return*表达式进行类型推导。除了返回值可以类型推导，在*C++14*中我们使用generic lambda还能对形参进行类型推导；
+->之后我们定义的是返回值类型，当然我们可以将其隐藏，编译器会根据*return*表达式进行类型推导。除了返回值可以类型推导，在*C++14*中我们使用generic lambda还能对形参进行类型推导；
 
 通过闭包和返回值以及形参的类型推导我们可以进行函数式编程，比方说构造*Church Number*：
 
@@ -1278,7 +1703,7 @@ unique_ptr<int> test()//返回值不能为rvalue reference，否则会产生dang
 unique_ptr<int> a1 = move(test());//ok
 ```
 
-*shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。*shared_ptr*的默认*deleter*为`[](T *a){delete a;}`，所以如果让*shared_ptr*管理对象数组时需要指定*deleter*为`[](T *a){delete[] a;}`，否则*shared_ptr*不能正确调用所有对象的析构函数。而由于*unique_ptr*不能在定义时管理数组，在*reset*时又不能*reset deleter*，所以*unique_ptr*在*C++17*前都不能管理数组。
+*shared_ptr*则会更加灵活，在*unique_ptr*的基础上增加了引用计数，每一次显示或者是隐式构造都会增加引用计数（引用计数为原子操作，线程安全，但管理的内存需要自己来维护线程安全，除非使用*unique_ptr*），当引用计数归零之后会在其析构函数中调用*deleter*函数来释放其管理的内存。*shared_ptr*的默认*deleter*为`[](T *a){delete a;}`，所以如果让*shared_ptr*管理对象数组时需要指定*deleter*为`[](T *a){delete[] a;}`，否则*shared_ptr*不能正确调用所有对象的析构函数。
 
 在实际使用*shared_ptr*的过程中我们不可避免的会出现循环引用的情况，比如下面这种情况：
 
@@ -1333,7 +1758,7 @@ int main() {
 }
 ```
 
-*shared_ptr*在*C++17*之前都不支持动态数组，所以在这之前如果用*shared_ptr.reset()*数组之后需要自定义*deleter*，使用*delete[]*来进行释放：
+*shared_ptr*在*C++17*之前都不支持动态数组，所以在这之前如果用*shared_ptr.reset()*数组之后需要自定义*deleter*，使用*delete[]*来进行释放，而由于*unique_pt*对数组做了特例化，在C++11就可以在构造函数中传入数组。：
 
 ```cpp
 std::shared_ptr<int[]> sp1(new int[10]()); // 错误，c++17前不能传递数组类型作为shared_ptr的模板参数
@@ -1346,10 +1771,10 @@ std::shared_ptr<int> sp2(new int[10]()); // 错误，可以编译，但会产生
 ```cpp
 get(); //返回管理的裸指针
 shared_ptr<ClassName> sp(new ClassName,[](ClassName* p){delete p;});//构造函数，自定义deleter
-reset(p, Del);//重新设置维护的指针及其对应的deleter,只有shared_ptr可以reset deleter，unique_ptr不行
+reset(p, Del);//释放之前管理的指针，重新设置维护的指针及其对应的deleter,只有shared_ptr可以reset deleter，unique_ptr不行
 get_deleter();//获得智能指针的deleter
 template <class T, class... Args>
-shared_ptr<T> make_shared (Args&&... args);//相当于调用T类的构造函数，
+shared_ptr<T> make_shared (Args&&... args);//相当于调用T类的构造函数，auto baz = std::make_shared<std::pair<int,int>> (30,40);
 ```
 
 ## 14.2 *enable_shared_from_this*
@@ -1446,7 +1871,7 @@ int main(int argc, char* argv[])
 
 #### 15.1.1.2 迭代器类型
 
-对于*Cstyle*数组，我们使用普通指针就可以对数组进行各种操作。*vector*维护的是一个连续线性空间，与数组一样，所以无论其元素型别为何，普通指针都可以作为*vector*的迭代器而满足所有必要的条件。*vector*所需要的迭代器操作，包括*operator*,*operator->*,*operator++*,*operator--*,*operator+=*,*operator-=*等，普通指针都具有。因此，普通指针即可满足*vector*对迭代器的需求。所以，*vector*提供了*Random Access Iterators*。 
+对于*C style*数组，我们使用普通指针就可以对数组进行各种操作。*vector*维护的是一个连续线性空间，与数组一样，所以无论其元素型别为何，普通指针都可以作为*vector*的迭代器而满足所有必要的条件。*vector*所需要的迭代器操作，包括*operator*,*operator->*,*operator++*,*operator--*,*operator+=*,*operator-=*等，普通指针都具有。因此，普通指针即可满足*vector*对迭代器的需求。所以，*vector*提供了*Random Access Iterators*。 
 
 #### 15.1.1.3 内存分配
 
@@ -1462,8 +1887,8 @@ int main(int argc, char* argv[])
 对于迭代器失效的问题，*vector*有三种情况会导致迭代器失效：
 
 * *vector*管理的是连续的内存空间，在容器中插入（或删除）元素时，插入（或删除）点后面的所有元素都需要向后（或向前）移动一个位置，指向发生移动的元素的迭代器都失效。 
-* 随着元素的插入，原来分配的连续内存空间已经不够且无法在原地拓展新的内存空间，整个容器会被*copy*到另外一块内存上，此时指向原来容器元素的所有迭代器通通失效。 
-* 删除元素后，指向被删除元素的迭代器失效。
+* 随着元素的insert或者push_back，原来分配的连续内存空间已经不够且无法在原地拓展新的内存空间，整个容器会被*copy*到另外一块内存上，此时指向原来容器元素的所有迭代器通通失效；如果内存空间能满足则插入位置迭代器及其后面的迭代器都失效。
+* 删除元素后，指向被删除元素及其后面的迭代器失效。
 
 #### 15.1.1.5 常用成员函数
 
@@ -1473,15 +1898,18 @@ template <class InputIterator> vector (InputIterator first, InputIterator last, 
 vector (const vector& x);
 vector& operator= (const vector& x);//包含赋值和移动版本
 reference at (size_type n);//以此替换operator[]，at函数会做边界检测
-iterator insert (iterator position, const value_type& val);//Inserting new elements before the element at the specified position. Return an iterator that points to the first of the newly inserted elements.
+iterator insert (iterator position, const value_type& val);//在指定位置插入新元素，并将后面的元素往后挪，所以指定迭代器及其后面的迭代器都失效。如果整个vector没有挪到新内存则返回的迭代器和入参迭代器是一个地址，若挪了则返回指向新元素的迭代器。
 void insert (iterator position, size_type n, const value_type& val);
 template <class InputIterator>
 void insert (iterator position, InputIterator first, InputIterator last);
 template <class... Args>
 iterator emplace (const_iterator position, Args&&... args);//和insert功能类型，返回值也一样，只不过只能插入一个值的右值引用
-iterator erase (iterator position);//Return an iterator pointing to the new location of the element that followed the last element erased by the function call.
+iterator erase (iterator position);//Return an iterator pointing to the new location of the element that followed the last element erased by the function call.指定迭代器位置的元素删除，后面元素往前挪，则它及其后面的迭代器都失效
 iterator erase (iterator first, iterator last);
 value_type* data() noexcept;//返回vertor管理的内存首地址
+void shrink_to_fit();//Requests the container to reduce its capacity to fit its size，如果发生reallocation，则所有迭代器失效，否则不影响
+reference front();//返回首元素值的引用
+void reserve (size_type n);//若发生reallocation，所有迭代器失效。和resize的区别是这个不创建新元素，而resize会创建新元素，并且可以直接访问。和shrink_to_fit都是改变capacity的大小，并不改变resize，不会创建新的元素
 ```
 
 ### 15.1.2 *list*
@@ -1509,6 +1937,11 @@ template <class InputIterator>
 void insert (iterator position, InputIterator first, InputIterator last);
 iterator erase (iterator position);//Return An iterator pointing to the element that followed the last element erased by the function call. 
 iterator erase (iterator first, iterator last);
+void reverse() noexcept;//Reverses the order of the elements in the list container.
+void resize (size_type n);
+void resize (size_type n, const value_type& val);//If n is smaller than the current container size, the content is reduced to its first n elements, removing those beyond.If n is greater than the current container size, the content is expanded by inserting at the end as many elements as needed to reach a size of n. If val is specified, the new elements are initialized as copies of val, otherwise, they are value-initialized.
+template <class Compare>
+  void sort (Compare comp);//由于list不能使用std::sort，所以有自己的排序函数，该函数不会导致迭代器失效
 ```
 
 ### 15.1.3 *deque*
@@ -1529,13 +1962,11 @@ iterator erase (iterator first, iterator last);
 
 #### 15.1.3.3 迭代器失效
 
-- 在deque容器首部或者尾部插入元素不会使得任何迭代器失效。
-- 在其首部或尾部删除元素则只会使指向被删除元素的迭代器失效。
-- 在deque容器的任何其他位置的插入和删除操作将使指向该容器元素的所有迭代器失效。
+- 增加任何元素都将使deque的迭代器失效。在deque的中间删除元素将使迭代器失效。在deque的头或尾删除元素时，只有指向该元素的迭代器失效。跟vector的区别在于在队前或队后插入元素时（push_back(),push_front()）,由于可能缓冲区的空间不够，需要增加map中控器，而中控器的个数也不够，所以新开辟更大的空间来容纳中控器，所以可能会使迭代器失效；但指针、引用仍有效，因为缓冲区已有的元素没有重新分配内存。
 
 ## 15.2 容器适配器(*container adaptor*)
 
-如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以关联容器为基础实现的。*C++*提供了三种容器适配器：*stack*，*queue*和*priority_queue*。*stack*和*queue*基于*deque*实现，*priority_queue*基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
+如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以顺序容器为基础实现的。*C++*提供了三种容器适配器：*stack*，*queue*和*priority_queue*。*stack*和*queue*默认基于*deque*实现，*priority_queue*默认基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
 
 ### 15.2.1 *stack*
 
@@ -1596,7 +2027,7 @@ template <class P> pair<iterator,bool> insert (P&& val);//插入成功返回指�
 template <class P> iterator insert (const_iterator position, P&& val);//和顺序容器的区别在于其不能随意存储，在这个重载中的第一个迭代器的含义不是像顺序存储一样让你把新的值插入这个迭代器后面，它仍然会进行排序插入正确的位置。只不过若插入恰巧发生在hint前的位置（用upper_bound()获得），则时间复杂度为常数
 template <class InputIterator>
 void insert (InputIterator first, InputIterator last);
-mapped_type& operator[] (key_type&& k);//等于(*((this->insert(make_pair(k,mapped_type()))).first)).second，所以无论其实是否包含该元素都会做一次insert操作
+mapped_type& operator[] (key_type&& k);//等于(*((this->insert(make_pair(k,mapped_type()))).first)).second，所以无论其实是否包含该元素都会做一次insert操作插入一个调用无参数构造函数构造的value值（若没有无参数构造函数则会编译出错），再通过insert的返回值的pair保存的迭代器来修改对应key的value值，所以该操作十分耗时。返回值为对应值的引用，原来没有则返回新构造元素的引用。
 iterator  erase (const_iterator position);//返回删除元素的下一个元素的迭代器
 iterator  erase (const_iterator first, const_iterator last);
 size_type erase (const key_type& k);//返回删除元素个数
@@ -1609,11 +2040,28 @@ pair<iterator,bool> emplace (Args&&... args);
 map& operator= (const map& x);
 map& operator= (map&& x);
 map& operator= (initializer_list<value_type> il);
+/*
+map<int, int> mymap{
+{1, 1},
+{2, 3}
+};
+*/
 ```
 
 ### 15.3.2 *set/multiset*
 
-set/multiset跟map不同，它通过值来进行排序，所以不能对存储的数据进行随意修改。思考一下，set和map都只能通过迭代器来进行访问，若set能随意修改迭代器对应的值那这个迭代器就失效了，因为值改变了需要重新排序。正因如此，set的迭代器使用operator*返回的类型是const的，就是防止你对其进行修改。
+set/multiset跟map不同，它通过值来进行排序，所以不能对存储的数据进行随意修改。思考一下，set和map都只能通过迭代器来进行访问，若set能随意修改迭代器对应的值那这个迭代器就失效了，因为值改变了需要重新排序。正因如此，set的迭代器使用operator*返回的类型是const的，就是防止你对其进行修改:
+
+```cpp
+set<int> myset = {1,2,3,4,5,6,7,8,9};
+auto it = myset.find(4);
+*it = *it + 6;
+cout<<"*it:"<<*it<<endl;
+/*
+gcc下编译错误为assignment of read-only location ‘it.std::_Rb_tree_const_iterator<_Tp>::operator*<int>()’
+通过源码我们可以看到set的迭代器的operator*重载函数返回的是const int&
+*/
+```
 
 常用成员函数除*operator[]*外和*map*系列一致。
 
@@ -1652,11 +2100,19 @@ void rehash( size_type n );//Sets the number of buckets in the container to n or
 float load_factor() const noexcept;//load_factor = size / bucket_count
 hasher hash_function() const;
 size_type bucket_count() const noexcept;
+iterator begin() noexcept;
+const_iterator begin() const noexcept;
+local_iterator begin ( size_type n );
+const_local_iterator begin ( size_type n ) const;//由于是无序map，所以不能保证是从哪一个元素开始，但是能保证的是从begin到end可以遍历所有的元素
 ```
 
 ### 15.3.4 *unordered_set*/*unordered_multiset*
 
 常用成员函数除*operator[]*外和*unordered_map*系列一致。
+
+### 15.3.5迭代器失效
+
+RBT实现的容器的迭代器都属于bidirectional iterator，hashmap实现的容器的迭代器属于forward iterator。map/multimap/set/multiset只有被erase调元素对应的迭代器会失效，其他操作都不会导致迭代器失效；对于unordered系列来说erase会导致对应元素的迭代器失效，insert当且仅当插入时导致rehash（即重新设置bucket个数），那么所有的迭代器都会失效。
 
 ## 15.4 迭代器
 
@@ -1760,7 +2216,7 @@ Random-access iterator是功能最强大的迭代器类型，在Bidirectional it
 
 ## 16.1 *pthread*
 
-pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。实现POSIX 线程标准的库常被称作**Pthreads**，一般用于Unix-like POSIX 系统，如Linux、Solaris。Linux的pthread实现是*Native POSIX Thread Library* (*NPTL*)。在Linux2.6之前进程是内核调度的实体，在内核中并不能真正支持线程。但是它的确可以通过 `clone()` 系统调用将进程作为可调度的实体。这个调用创建了调用进程（calling process）的一个拷贝，这个拷贝与调用进程共享相同的地址空间。LinuxThreads 项目使用这个调用来完全在用户空间模拟对线程的支持。不幸的是，这种方法有一些缺点，尤其是在信号处理、调度和进程间同步原语方面都存在问题。另外，这个线程模型也不符合 POSIX 的要求。要改进 LinuxThreads，非常明显我们需要内核的支持，并且需要重写线程库。有两个相互竞争的项目开始来满足这些要求。一个包括 IBM 的开发人员的团队开展了 NGPT（Next-Generation POSIX Threads）项目。同时，Red Hat 的一些开发人员开展了 NPTL 项目。NGPT 在 2003 年中期被放弃了，把这个领域完全留给了 NPTL。
+pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。实现POSIX 线程标准的库常被称作**Pthreads**，一般用于Unix-like POSIX 系统，如Linux、Solaris。Linux的pthread实现是*Native POSIX Thread Library* (*NPTL*)。在Linux2.6之前进程是内核调度的实体，在内核中并不能真正支持线程。但是它的确可以通过 `clone()` 系统调用将进程作为可调度的实体。这个调用创建了调用进程（calling process）的一个拷贝，这个拷贝与调用进程共享相同的地址空间。LinuxThreads 项目使用这个调用来完全在用户空间模拟对线程的支持。不幸的是，这种方法有一些缺点，尤其是在信号处理、调度和进程间同步原语方面都存在问题。另外，这个线程模型也不符合 POSIX 的要求。要改进 LinuxThreads，非常明显我们需要内核的支持，并且需要重写线程库。有两个相互竞争的项目开始来满足这些要求。一个包括 IBM 的开发人员的团队开展了 NGPT（Next-Generation POSIX Threads）项目。同时，Red Hat 的一些开发人员开展了 NPTL 项目。NGPT 在 2003 年中期被放弃了，把这个领域完全留给了 NPTL。 
 
 > reference:
 >
@@ -1899,7 +2355,7 @@ typedef union
     	int __owner;//owner线程ID
    		unsigned int __nusers;
     	/* KIND must stay at this position in the structure to maintain
-       binary compatibility.  */
+        binary compatibility.  */
     	int __kind;//记录mutex的类型
     	int __spins;
     	__pthread_list_t __list;
@@ -1917,7 +2373,7 @@ PTHREAD_MUTEX_ERRORCHECK_NP//检错锁，如果同一个线程重复请求同一
 PTHREAD_MUTEX_ADAPTIVE_NP//自适应锁，自旋锁与普通锁的混合。
 ```
 
-而C++11其实只实现了普通锁std::mutex和重入锁std::recursive_mutex，自旋锁需要我们自己实现，我们会在16.5章节中使用std::atomic来实现。
+而C++11其实只实现了普通锁std::mutex和重入锁std::recursive_mutex，C++17多了shared_mutex（读写锁），自旋锁需要我们自己实现，我们会在16.5章节中使用std::atomic来实现。
 
 pthread中使用 pthread_mutex_lock接口来对4种锁进行加锁，我们可以看一下其中的操作：
 
@@ -2113,11 +2569,13 @@ bool try_lock_until (const chrono::time_point<Clock,Duration>& abs_time);//一�
 
 ### 16.3.4 recursive_mutex
 
-### 16.3.5 shared_mutex
-
 mutex可以分为递归锁(recursive mutex)和非递归锁(non-recursive mutex)。可递归锁也可称为可重入锁(reentrant mutex)，非递归锁又叫不可重入锁(non-reentrant mutex)。
 
 二者唯一的区别是，同一个线程可以多次获取同一个递归锁，不会产生死锁。而如果一个线程多次获取同一个非递归锁，则会产生死锁。
+
+### 16.3.5 shared_mutex
+
+这个锁就是我们平时所说的读写锁，线程可以将其设置为独占，在非独占的情况先多个线程可共享。所以有两种加锁方式，在C++17中实现。
 
 ## 16.4 *std::condition_variable*
 
@@ -2161,7 +2619,7 @@ int main() {
 }
 ```
 
-程序一开始先启动worker线程并获得mutex锁，之后调用std::condition_variable::wait，由于当前ready为false则释放mutex锁并调用wait阻塞当前线程等待被唤醒。与此同时主线程继续执行，使用lock_guard获得mutex锁，生成数据，将ready置成true，离开大括号作用域后lock_guard析构释放mutex锁并调用std::condition_variable::notify_one()通知wait的线程。此时主线程重新阻塞去竞争获得mutex锁。worker线程被唤醒后wait函数判断此时ready返回true不再调用wait阻塞当前线程，并获得mutex进行加锁，处理完数据之后将processd置true并对mutex进行解锁，最后通知主线程。此时主线程有可能被阻塞在竞争mutex的地方被唤醒，判断processed为true直接继续执行程序；有可能在wait被唤醒，重新判断processed返回true后继续运行，最终结束程序。
+程序一开始先启动worker线程并获得mutex锁，之后调用std::condition_variable::wait，由于当前ready为false则调用wait()释放mutex锁并阻塞当前线程等待被唤醒。与此同时主线程继续执行，使用lock_guard获得mutex锁，生成数据，将ready置成true，离开大括号作用域后lock_guard析构释放mutex锁并调用std::condition_variable::notify_one()通知wait的线程。此时主线程重新阻塞去竞争获得mutex锁。worker线程被唤醒后加锁，wait函数判断此时ready返回true不再调用wait阻塞当前线程，接着处理完数据之后将processed置true并对mutex进行解锁，最后通知主线程。此时主线程有可能被阻塞在竞争mutex的地方被唤醒并加锁，在wait函数判断processed为true后直接继续执行程序；有可能在wait被唤醒并加锁，重新判断processed返回true后继续运行，最终结束程序。
 
 ### 16.4.1 *Lost Wakeup and Spurious Wakeup*
 
@@ -2175,9 +2633,9 @@ int main() {
 ```cpp
 void notify_all() noexcept;//还有非成员函数void notify_all_at_thread_exit (condition_variable& cond, unique_lock<mutex> lck);
 void notify_one() noexcept;//如果有多个线程都在等待，会随机唤醒一个线程
-void wait (unique_lock<mutex>& lck);//该函数会阻塞当前线程直到被唤醒，被阻塞的同时当前线程会主动调用lck.unlock()释放其管理的锁
+void wait (unique_lock<mutex>& lck);//该函数会阻塞当前线程直到被唤醒，被阻塞的同时当前线程会主动调用lck.unlock()释放其管理的锁，被唤醒之后主动加锁。
 template <class Predicate>
-void wait (unique_lock<mutex>& lck, Predicate pred);//该函数和上一个重载的区别在于当callable的pred返回false才会执行wait，返回true的时候不会加锁，该操作相当于while (!pred()) wait(lck);(which is specially useful to check against spurious wake-up calls)
+void wait (unique_lock<mutex>& lck, Predicate pred);//该函数和上一个重载的区别在于当callable的pred返回false才会执行wait，返回true的时候不会去调用wait，此时若在之前没有进行加锁则就没有获得锁，该操作相当于while (!pred()) wait(lck);(which is specially useful to check against spurious wake-up calls)
 template <class Clock, class Duration>
     cv_status wait_until (unique_lock<mutex>& lck,
                         const chrono::time_point<Clock,Duration>& abs_time);//当等待时间到了会返回cv_status::timeout，否则为cv_status::no_timeout
@@ -2189,7 +2647,7 @@ template <class Clock, class Duration, class Predicate>
 
 ## 16.5 *std::atomic*
 
-std::atomic<T>模板类，生成一个T类型的原子对象，并提供了系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic<T>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic<float>、atomic<double>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
+std::atomic<T>模板类，生成一个T类型的原子对象，并提供了一系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic<T>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic\<float\>、atomic\<double\>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
 
 ### 16.5.1 原子操作原理
 
@@ -2230,6 +2688,15 @@ struct LockFreeStackT
 	{
 		Node* node = new Node{ val, head_.load() };
 		while (!head_.compare_exchange_strong(node->next, node));
+        /*compare_exchange_strong函数用对象和第一个参数进行比较，如果相等则将对象的值替换为第二个参数并返回true，如果不相等，则将第一个参数的值赋为对象并返回false：
+        if (head_ == node->next) {
+        	head_ = node;
+        	return true;
+        } else {
+        	node->next = head_;
+        	return false;
+        }
+        */
 	}
 	void pop()
 	{
@@ -2285,8 +2752,9 @@ public:
     spin_mutex& operator= (const spin_mutex&) = delete;
     void lock() {
         bool expected = false;
-        while(!flag.compare_exchange_strong(expected, true))
-        expected = false;
+        while (!flag.compare_exchange_strong(expected, true)) {
+        	expected = false;
+        }
     }
     void unlock() {
         flag.store(false);
@@ -2360,15 +2828,15 @@ void promise<void>::set_value_at_thread_exit (void);// when T is void
 
 ## 16.8 *std::future*
 
-std::future 可以用来获取异步任务的结果，因此可以把它当成一种简单的线程间同步的手段。std::future 通常由某个 Provider 创建，你可以把 Provider 想象成一个异步任务的提供者，Provider 在某个线程中设置共享状态的值，与该shared state相关联的 std::future 对象调用 get（通常在另外一个线程中） 获取该值，如果共享状态的标志不为 ready，则调用 std::future::get 会阻塞当前的调用者，直到 Provider 设置了共享状态的值（此时共享状态的标志变为 ready），std::future::get 返回异步任务的值或异常（如果发生了异常）。
+std::future 可以用来获取异步任务的结果，因此可以把它当成一种简单的线程间同步的手段。std::future 通常由某个Provider创建，你可以把Provider想象成一个异步任务的提供者，Provider 在某个线程中设置共享状态的值，与该shared state相关联的std::future对象调用get（通常在另外一个线程中）获取该值，如果共享状态的标志不为 ready，则调用 std::future::get 会阻塞当前的调用者，直到 Provider 设置了共享状态的值（此时共享状态的标志变为 ready），std::future::get 返回异步任务的值或异常（如果发生了异常）。
 
-一个有效(valid)的 std::future 对象通常由以下三种 Provider 创建，并和某个共享状态相关联。Provider 可以是函数或者类，其实我们前面都已经提到了，他们分别是：
+一个有效(valid)的std::future对象通常由以下三种Provider创建，并和某个共享状态相关联。Provider可以是函数或者类，其实我们前面都已经提到了，他们分别是：
 
-- std::async构造函数返回一个future。
-- std::promise::get_future，get_future 为 promise 类的成员函数。
-- std::packaged_task::get_future，此时 get_future为 packaged_task 的成员函数。
+- std::async函数返回一个future。
+- std::promise::get_future，get_future为 promise类的成员函数。
+- std::packaged_task::get_future，此时get_future为packaged_task的成员函数。
 
-std::shared_future与std::future 类似，但是std::shared_future 可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
+std::shared_future与std::future类似，但是std::shared_future可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
 
 常用函数有：
 
