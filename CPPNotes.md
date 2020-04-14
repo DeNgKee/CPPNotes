@@ -619,21 +619,21 @@ public:
 
 https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
 
+### 6.3.3 特殊函数调用虚函数
+
+因为基类构造器是在派生类之前执行的，所以在基类构造器运行的时候派生类的数据成员还没有被初始化。如果在基类的构造过程中对虚函数的调用传递到了派生类，派生类对象当然可以参照引用局部的数据成员，但是这些数据成员其时尚未被初始化。析构函数同理，当调用父类析构函数时子类已经完成析构，若在父类析构函数中调用虚函数进入子类访问成员变量同样是一些未初始化的值。
+
 ## 6.4 类的静态成员函数和变量
 
 + 1) 静态成员函数不能直接访问非静态成员变量，可以以传入对象的方式间接访问，并且可以访问类的私有成员变量。
 + 2) 非静态成员函数可以调用静态成员变量，因为静态成员变量属于整个类而非某个特定的对象，所有对象都共享该变量，在对象产生之前就有了，存储在全局静态存储区。
 + 3) 使用静态成员变量实现多个对象之间的数据共享不会破坏隐藏的原则，保证了安全性还能节省内存。
 + 4) 静态成员变量使用之前必须初始化（如`int MyClass::m_Number = 0;`，但是不能在头文件中初始化，否则会重复定义，链接会出错）。
-+ 5) 静态成员函数属于整个类，所以不需要生成对象就可以调用。
-
-## 6.5 调用虚函数
-
-因为基类构造器是在派生类之前执行的，所以在基类构造器运行的时候派生类的数据成员还没有被初始化。如果在基类的构造过程中对虚函数的调用传递到了派生类，派生类对象当然可以参照引用局部的数据成员，但是这些数据成员其时尚未被初始化。析构函数同理，当调用父类析构函数时子类已经完成析构，若在父类析构函数中调用虚函数进入子类访问成员变量同样是一些为初始化的值。
++ 5) 静态成员函数属于整个类，所以不需要生成对象就可以调用，不需要传入this指针，所以也不能声明为虚函数。
 
 ## 6.5 友元
 
-+ 1) 友元函数是可以直接访问类的私有成员的非成员函数。它是定义在类外的普通函数，它不属于任何类，但需要在类的定义中加以声明，声明时只需在友元的名称前加上关键字*friend*。友元函数能访问对象的私有成员的意思是在友元函数内，对象可以直接访问私有成员变量而不需要通过成员函数，而不是友元函数可以直接访问成员变量，和静态成员函数有区别：
++ 1) 友元函数是可以直接访问类的私有成员的非成员函数。它是定义在类外的普通函数，它不属于任何类，但需要在类的定义中加以声明，声明时只需在友元的名称前加上关键字*friend*。友元函数能访问对象的私有成员的意思是在友元函数内，对象可以直接访问私有成员变量而不需要通过成员函数，而不是友元函数可以直接访问成员变量，和静态成员函数一样：
 
   ```cpp
   class Derive
@@ -674,6 +674,8 @@ https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e
   friend class B;
   };
   ```
+
+* 7) 友元函数的存在相当于外部可以直接访问私有成员，所以算是破坏了类的封装性。
 
 ## 6.6 操作符重载
 
@@ -721,13 +723,92 @@ https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e
 所以派生类的构造顺序是：
 
 * 1、分配内存（父类加子类需要的空间）
-* 2、基类构造过程
+* 2、基类构造
   * 1、初始化父类虚表指针
   * 2、父类列表初始化
   * 3、执行构造函数体 
 * 3、初始化子类虚表指针
 * 4、子类列表初始化
 * 5、执行子类构造函数体 
+* 6、调用子类析构函数，在子类析构函数的最后调用子类成员变量的析构函数
+* 7、调用父类的析构函数，在父类析构函数的最后调用父类成员变量的析构函数
+* 8、释放内存
+
+通过下面这个用例我们能很容易看到类的构造顺序：
+
+```cpp
+class A1 {
+public:
+    A1()
+    {
+        cout << "A1 construct" << endl;
+    }
+    ~A1()
+    {
+        cout << "A1 destructor" << endl;
+    }
+};
+class A {
+public:
+    A() {
+        cout << "A constructor" << endl;
+        func();
+    }
+    virtual ~A()
+    {
+        cout << "A destructor" << endl;
+    }
+    virtual void func()
+    {
+        cout << "call A func" << endl;
+    }
+    void *operator new(size_t size)//默认静态
+    {
+        cout << "call member operator new" << endl;
+        void * a = ::operator new(size);
+        return a;
+    }
+    void operator delete(void *ptr)//默认静态
+    {
+        cout << "call member operator delete" << endl;
+        ::operator delete(ptr);
+        return;
+    }
+    A1 a1;
+};
+class B :public A
+{
+public:
+    B() {
+        cout << "B constructor" << endl;
+        func();
+    }
+private:
+    virtual void func()
+    {
+        cout << "call B func" << endl;
+    }
+public:
+    virtual ~B()
+    {
+        cout << "B destructor" << endl;
+    }
+};
+A *a = new B;
+delete a;
+/*
+call member operator new
+A1 construct
+A constructor
+call A func
+B constructor
+call B func
+B destructor
+A destructor
+A1 destructor
+call member operator delete
+*/
+```
 
 若子类声明跟父类同名的函数则父类的成员函数会对子类隐藏，不能直接调用，除非使用域名空间或者父类指针进行调用：
 
@@ -754,7 +835,7 @@ static_cast<Base*>(d)->func1();
 delete d;
 ```
 
-若派生类和基类拥有同名的成员变量则他们会同时存在于内存中，都会占用内存。因为他们属于不同的命名空间所以最终编译后的符号肯定不会是一样的，所以不会导致重复定义符号的问题。那么我们要怎么访问父类的同名变量呢，通过域名空间访问：
+若派生类和基类拥有同名的成员变量则他们会同时存在于内存中，都会占用内存。因为他们属于不同的命名空间最终编译后的符号肯定不会是一样的，所以不会导致重复定义符号的问题。那么我们要怎么访问父类的同名变量呢，通过域名空间访问：
 
 ```cpp
 class Base {
@@ -1248,9 +1329,27 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
 * 4.*reinterpret_cast*
 
-  * *reinterpret_cast*是强制类型转换符用来处理无关类型转换的，通常为操作数的位模式提供较低层次的重新解释。但是他仅仅是重新解释了给出的对象的比特模型，并没有进行二进制的转换。他是用在任意的指针之间的转换，引用之间的转换，指针和足够大的*int*型之间的转换，整数到指针的转换。
+  * *reinterpret_cast*是强制类型转换符用来处理无关指针（引用）类型转换的，通常为操作数的位模式提供较低层次的重新解释。但是他仅仅是重新解释了给出的对象的比特模型，并没有进行二进制的转换。他是用在任意的指针之间的转换，引用之间的转换，指针和足够大的*int*型之间的转换，整数到指针的转换。
+  
+    ```cpp
+    float d = 12.5;
+    int a = reinterpret_cast<int&>(d);
+    float c = reinterpret_cast<float&>(a);
+    float* b;
+    b = (float*)(&a);
+    printf("b:%f\n", *b);//12.5000
+    printf("%x\n", *(long long*)&a);//41480000
+    printf("%x\n", *(long long*)b);//41480000
+    printf("c:%f\n", c);//12.5000
+    ```
 
 # 10. 异常机制
+
+在typedef语句中不能有异常规格声明。 
+
+虽然可以在构造函数中抛出异常，但应禁止在析构函数中抛出异常。
+
+throw e是只抛出此类异常，而throw则是抛出所有异常 
 
 # 11. *auto*
 
@@ -1393,8 +1492,8 @@ A(A &&a)
 如果我们为对象实现了移动构造函数，在函数中返回局部对象时我们也会触发移动语义：
 
 * 1) 局部变量赋给临时变量时触发移动构造函数（没有则触发拷贝构造函数）
-* 2) 临时变量赋值给函数已经声明过的外部变量时会触发移动赋值构造函数（这种情况没有移动赋值构造函数会编译出错）
-* 3) 若是声明时赋值则触发移动构造函数（若没有可以触发拷贝构造函数）
+* 2) 临时变量赋值给函数**已经声明过的**外部变量时会触发**移动赋值构造函数**（这种情况没有移动赋值构造函数会编译出错）
+* 3) 若是声明时赋值则触发**移动构造函数**（若没有可以触发拷贝构造函数）
 * 4) 若移动赋值构造函数返回值而不是引用的话会在临时对象赋值给外部对象时再调用一次复制构造函数，这是因为又实例化了一个新的对象
 * 5) 这一段可结合*6.3*章节一起看
 
@@ -1556,7 +1655,7 @@ void func(Data && data) {}
 * 1.所有右值引用折叠到右值引用上仍然是一个右值引用。（*T&& &&*变成 *T&&*）
 * 2.所有的其他引用类型之间的折叠都将变成左值引用。 （*T& &* 变成 *T&*; *T& &&* 变成 *T&*; *T&& &* 变成 *T&*）
 
-对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward\<T\>()*。如果传进来的参数是一个左值，*enter*函数会将T推导为*T&*，*forward*会实例化为*forward\<T&\>*，*T& &&*通过引用折叠会成为*T&*，所以传给*func*函数的还是左值；如果传进来的是一个右值，*enter*函数会将*T*推导为*T*，*forward*会实例化为*forward\<T\>*，*T&&*通过引用折叠还是*T&&*，所以传给*func*函数的还是右值：
+对于万能引用，我们可能需要知道它什么时候是右值引用什么时候是左值引用，这时候我们就需要完美转发*std::forward\<T\>()*。如果传进来的参数是一个**左值**，*enter*函数会将T推导为***T&***，*forward*会实例化为*forward\<T&\>*，*T& &&*通过引用折叠会成为*T&*，所以传给*func*函数的还是左值；如果传进来的是一个**右值或者是右值引用**，*enter*函数会将*T*推导为***T***，*forward*会实例化为*forward\<T\>*，*T&&*通过引用折叠还是*T&&*，所以传给*func*函数的还是右值：
 
 ``` cpp
 template<typename T>
@@ -1962,7 +2061,7 @@ template <class Compare>
 
 #### 15.1.3.3 迭代器失效
 
-- 增加任何元素都将使deque的迭代器失效。在deque的中间删除元素将使迭代器失效。在deque的头或尾删除元素时，只有指向该元素的迭代器失效。跟vector的区别在于在队前或队后插入元素时（push_back(),push_front()）,由于可能缓冲区的空间不够，需要增加map中控器，而中控器的个数也不够，所以新开辟更大的空间来容纳中控器，所以可能会使迭代器失效；但指针、引用仍有效，因为缓冲区已有的元素没有重新分配内存。
+- 在中间插入元素都将使deque的迭代器、指针、引用失效。在deque的中间删除元素将使迭代器、引用、指针失效。跟vector的区别在于在队前或队后插入元素时（push_back(),push_front()）,由于可能缓冲区的空间不够，需要增加map中控器，而中控器的个数也不够，所以新开辟更大的空间来容纳中控器，所以可能会使迭代器失效；但指针、引用仍有效，因为缓冲区已有的元素没有重新分配内存。
 
 ## 15.2 容器适配器(*container adaptor*)
 
@@ -2505,7 +2604,7 @@ __asm __volatile (LLL_EBX_LOAD \
 ### 16.3.2 常用函数
 
 ```cpp
-void lock();//如果当前mutx被其他线程锁定，则该接口会阻塞当前线程直至解锁；如果呗同一个线程锁定，则会造成死锁
+void lock();//如果当前mutx被其他线程锁定，则该接口会阻塞当前线程直至解锁；如果被同一个线程锁定，则会造成死锁
 native_handle_type native_handle();//和native_handle类似，在linux下会获得pthread_mutex_t
 bool try_lock();//若锁被其他线程占用会返回false，若被自己占用会造成死锁
 void unlock();//If the mutex is not currently locked by the calling thread, it causes undefined behavior.
@@ -2647,7 +2746,7 @@ template <class Clock, class Duration, class Predicate>
 
 ## 16.5 *std::atomic*
 
-std::atomic<T>模板类，生成一个T类型的原子对象，并提供了一系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic<T>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic\<float\>、atomic\<double\>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
+std::atomic<T>模板类，生成一个T类型的原子对象，并提供了一系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic\<T\>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic\<float\>、atomic\<double\>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
 
 ### 16.5.1 原子操作原理
 
@@ -2836,7 +2935,7 @@ std::future 可以用来获取异步任务的结果，因此可以把它当成�
 - std::promise::get_future，get_future为 promise类的成员函数。
 - std::packaged_task::get_future，此时get_future为packaged_task的成员函数。
 
-std::shared_future与std::future类似，但是std::shared_future可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
+std::shared_future与std::future类似，但是std::shared_future可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)，这样就可以实现多个线程等待一个线程结果的场景。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
 
 常用函数有：
 
