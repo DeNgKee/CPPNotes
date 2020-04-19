@@ -4,7 +4,7 @@
 
 ELF文件分为代码段，*.data段*，*.bss段*，*.rodata*段以及自定义段。
 
-已经初始化的全局变量以及静态局部变量存放在*.data*段，没有初始化的存放在*.bss*段。由于没有初始化数据，所以其实不占用空间，因此在*ELF*文件中，*.bss*只是一个占位符，只有当程序真正运行起来之后才会在内存上真正的开辟*.bss*空间，并且在*.bss*空间中将变量初始化为0。程序运行之后存放在全局静态区。
+已经初始化的全局变量以及静态局部变量（包括类的）存放在*.data*段，没有初始化的存放在*.bss*段。由于没有初始化数据，所以其实不占用空间，因此在*ELF*文件中，*.bss*只是一个占位符，只有当程序真正运行起来之后才会在内存上真正的开辟*.bss*空间，并且在*.bss*空间中将变量初始化为0。程序运行之后存放在全局静态区。
 
 常量（字符串常量，*const*变量）存放在*.rodata*段，程序运行后存放在常量区
 
@@ -512,7 +512,7 @@ class BigArray {
   
 + 3)    在构造函数后面加*delete*关键字可将某个构造函数设为禁用，比如我们不希望对象进行拷贝构造而希望其进行移动构造这样能避免不必要的内存分配和拷贝，这样我们可在拷贝构造函数和赋值拷贝构造函数后面添加*delete*关键字。
 
-+ 4） 在一个类的成员变量只有*primitive type*时我们直接将*primitive type*赋值给对象会发生隐式转换，这种时候编译器不会报错并且能正常运行，但是可能并不是我们想要的结果。我们希望能早早地在编译阶段就发现这些问题，这时候我们可以将对应的构造函数声明为*explicit*，这样编译器在静态检查阶段便能发现问题。
++ 4） 在一个类的构造函数若只有一个入参时，将这个入参类型的对象赋值给该类产生的对象会产生隐式转换，这时候可能不是我们想要的结果。我们希望能早早地在编译阶段就发现这些问题，这时候我们可以将对应的构造函数声明为*explicit*，这样编译器在静态检查阶段便能发现问题。
 
 + 5） 当父类的析构函数不声明成虚析构函数的时候，子类继承父类，父类的指针指向子类时，delete掉父类的指针，只调动父类的析构函数，而不调动子类的析构函数。 
 
@@ -617,11 +617,11 @@ public:
 
 ### 6.3.2 返回值优化(*RVO*)
 
-https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
+> https://www.ibm.com/developerworks/community/blogs/5894415f-be62-4bc0-81c5-3956e82276f3/entry/RVO_V_S_std_move?lang=en 
 
 ### 6.3.3 特殊函数调用虚函数
 
-因为基类构造器是在派生类之前执行的，所以在基类构造器运行的时候派生类的数据成员还没有被初始化。如果在基类的构造过程中对虚函数的调用传递到了派生类，派生类对象当然可以参照引用局部的数据成员，但是这些数据成员其时尚未被初始化。析构函数同理，当调用父类析构函数时子类已经完成析构，若在父类析构函数中调用虚函数进入子类访问成员变量同样是一些未初始化的值。
+因为基类构造器是在派生类之前执行的，所以在基类构造器运行的时候派生类的数据成员还没有被初始化。如果在基类的构造过程中对虚函数的调用传递到了派生类，派生类对象当然可以参照引用局部的数据成员，但是这些数据成员其时尚未被初始化。析构函数同理，当调用父类析构函数时子类已经完成析构，若在父类析构函数中调用虚函数进入子类访问成员变量同样是一些未初始化的值。所以这两种情况下调用虚函数都不会有多态。
 
 ## 6.4 类的静态成员函数和变量
 
@@ -996,31 +996,39 @@ sizeof(d1);//8
 
 `virtual void MyFunc() = 0;`
 
-抽象类的纯虚函数的实现可以由自身给出，也可以由派生类给出。若由自身给出，派生类可通过静态调用的方式调用父类的抽象接口：
+抽象类的纯虚函数的实现可以由自身给出，也可以由派生类给出。
 
-```cpp
-class Base
-{
-public:
-    virtual void func() = 0
-    {
-        cout << "Base func" << endl;
-    }
-};
-class Derived :public Base
-{
-public:
-    void func()
-    {
-        cout << "Derived func" << endl;
-    }
-};
-Base *b = new Derived();
-b->Base::func();//Base func
-b->func();//Derived func
-```
+* 若没有由自身给出，在特殊函数中不能调用该纯虚函数，若调用相当于调用了一个只是声明了的函数，这样会在链接的时候找不到符号
 
-# 6. 命名空间
+* 若由自身给出，自身在特殊函数中能调用该纯虚函数（此时构造派生类时会调用抽象父类的构造函数并调用该纯虚函数），在派生类也可通过静态调用的方式调用父类的抽象接口：
+
+  ```cpp
+  class Base
+  {
+  public:
+      Base()
+      {
+          func();
+      }
+      virtual void func() = 0
+      {
+          cout << "Base func" << endl;
+      }
+  };
+  class Derived :public Base
+  {
+  public:
+      void func()
+      {
+          cout << "Derived func" << endl;
+      }
+  };
+  Base *b = new Derived();//Base func
+  b->Base::func();//Base func
+  b->func();//Derived func
+  ```
+
+# 7. 命名空间
 
 `namespace`分为有名命名空间和无名命名空间，无名的由于没有名字所以其他文件无法引用，相当于该文件里面的`static`。`namespace`中的变量或者函数通过作用域符进行访问：
 
@@ -1060,7 +1068,7 @@ namespace IBM
 }
 ```
 
-## 6.1 命名空间使用方法
+## 7.1 命名空间使用方法
 
 * 1） *using declarations*
 
@@ -1116,7 +1124,7 @@ namespace IBM
 
   > `[C++14: 7.3.4/4]:` For unqualified lookup (3.4.1), **the *using-directive* is transitive**: if a scope contains a *using-directive* that nominates a second namespace that itself contains *using-directives*, the effect is as if the using-directives from the second namespace also appeared in the first. *[..]* 
 
-## 6.2 限定作用域枚举类型
+## 7.2 限定作用域枚举类型
 
 先说一个通用规则，如果在一对大括号里声明一个名字，则该名字的可见性就被限定在括号括起来的作用于内。
 
@@ -1135,7 +1143,9 @@ Color c = Color::white;                           // fine
 auto c = Color::white;                            // 同样没有问题（和条款5的建议项吻合）
 ```
 
-# 7. Name Mangling
+普通的枚举其实可以看成一个int类型，可以跟进行加减，并且就算超过枚举类型的值也不会报错。对于这种枚举类型我们其实可以把他看成一个类，具有很多的限制，但是对于开发人员来说能在早起发现问题。
+
+# 8. Name Mangling
 
 *name mangling*的目的就是为了给重载的函数，不同作用域的变量或者函数不同的签名，以避免调用时的二义性调用。如果希望*C++*编译出来的代码不要被*mangling*，可以使用*extern "C" {}*来讲目标代码包含起来，这样能使得*C++*编译器编译出的二进制目标代码中的链接符号是未经过*C++*名字修饰过的，就像*C*编译器一样。
 
@@ -1162,9 +1172,21 @@ auto c = Color::white;                            // 同样没有问题（和条
 |                 Tru64 C++ V6.5 （ANSI模式）                  |      `__7h__Fi`       |      `__7h__Fic`       |      `__7h__Fv`       |
 |                       Watcom C++ 10.6                        |      `W?h$n(i)v`      |      `W?h$n(ia)v`      |      `W?h$n()v`       |
 
-# 8. *new/delete*重载
+# 9. 内存管理接口
 
-## 8.1 *new*
+## 9.1 C内存管理接口
+
+### 9.1.1 malloc
+
+### 9.1.2 realloc
+
+### 9.1.3 kmalloc
+
+### 9.1.4 vmalloc
+
+## 9.2 C++内存管理接口
+
+### 9.2.1 *new*
 
 *new operator*：指我们在C++里通常用到的关键字，比如`A* a = new A;`
 
@@ -1269,7 +1291,7 @@ cout << *((int*)a - 1) << endl;//打印125
 
 linux下我们可以通过函数malloc_usable_size来获得普通类型数组的大小，如果是类则会得到0，可能需要其他方式得到，这些都是编译器的特性，千万不能再实际产品中使用这种危险的方式获得数组的大小。
 
-## 8.2 *delete*
+### 9.3.2 *delete*
 
 delete和new一样也分为delete operator和operator delete，operator delete 一样可以进行重载，在这里我们不多介绍。只说一个delete和delete[]的区别：
 
@@ -1277,7 +1299,7 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
 另外delete operator一个空指针是不会报错的，其内部应该会做相应的判断，因为如果指针未空delete operator内部并没有调用operator delete。
 
-# 9. 类型转换
+# 10. 类型转换
 
 *C++*同样支持*C*风格的强制转换(*Type Cast*):`TypeName b = (TypeName)a;`
 
@@ -1343,7 +1365,7 @@ delete和new一样也分为delete operator和operator delete，operator delete �
     printf("c:%f\n", c);//12.5000
     ```
 
-# 10. 异常机制
+# 11. 异常机制
 
 在typedef语句中不能有异常规格声明。 
 
@@ -1351,7 +1373,7 @@ delete和new一样也分为delete operator和operator delete，operator delete �
 
 throw e是只抛出此类异常，而throw则是抛出所有异常 
 
-# 11. *auto*
+# 12. *auto*
 
 * 对于*auto*而言，其意义在于*type deduce*，所以它不会允许没有初始化的声明，这样对于开发者来说是一个很好的习惯；
 
@@ -1472,11 +1494,11 @@ throw e是只抛出此类异常，而throw则是抛出所有异常
       x = !x;
   ```
 
-# 12. 移动语义和右值引用
+# 13. 移动语义和右值引用
 
 首先我们来定义一下左值和右值，左值就是有名字的对象或者变量，可以被赋值或给别的对象或变量赋值，比如 `obj` , `*ptr` , `ptr[index]` , 和`++x` ；而右值就是临时变量（对象），不能被赋值，比如 `1729` , `x + y` , `std::string("hello world")` , 和`x++`，另外还有函数的返回值（除非返回引用） 。
 
-## 12.1 右值引用
+## 13.1 右值引用
 
 在*6.2*章节构造函数章节中我们介绍了移动构造函数，入参中的*A &&a*即为右值引用，当我们使用*move*函数将变量转换成右值引用之后再进行构造或者直接使用右值进行构造都会触发调用我们的移动构造函数。我们一般会在移动构造函数中实现移动语义的功能，就是不会新分配一块内存，而是将旧的内存直接赋给新的对象，并将旧的对象的指针赋成*nullptr*：
 
@@ -1532,7 +1554,7 @@ int x = 10;
 func(x);  // x是左值
 ```
 
-### 12.1.1 右值引用接受参数
+### 13.1.1 右值引用接受参数
 
 若我们的函数是右值引用，我们能接受哪些参数呢，假设我们有一个函数：
 
@@ -1648,7 +1670,7 @@ void func(Data && data) {}
   }
   ```
 
-## 12.2 万能引用
+## 13.2 万能引用
 
 这种未定的引用类型称为万能引用(*universal reference*)，这种类型必须被初始化，具体是什么类型取决于它的初始化。由于存在*T&&*这种未定的引用类型，当它作为参数时，有可能被一个左值引用或右值引用的参数初始化，这是经过类型推导的*T&&*类型，相比右值引用(*&&*)会发生类型的变化，这种变化就称为引用折叠，引用折叠规则如下：
 
@@ -1676,7 +1698,7 @@ void enter(T&& t) {
 }
 ```
 
-# 13. *lambda*表达式
+# 14. *lambda*表达式
 
 *lambda*表达式对于*C++*的意义有两条：
 
@@ -1778,7 +1800,7 @@ int main()
 }
 ```
 
-# 14.智能指针
+# 15.智能指针
 
 智能指针是在普通指针的基础上封装了一层*RAII*机制，这样一层封装机制的目的是为了使得指针可以方便的管理一个对象的生命周期。在程序员难以判断指针需要在什么时候释放，忘记释放，或者抛出异常时能安全的将内存释放。
 
@@ -1865,7 +1887,7 @@ std::unique_ptr<int[]> up1(new int[10]()); // ok, unique_ptr对此做了特化
 std::shared_ptr<int> sp2(new int[10]()); // 错误，可以编译，但会产生未定义行为
 ```
 
-## 14.1 常用函数
+## 15.1 常用函数
 
 ```cpp
 get(); //返回管理的裸指针
@@ -1876,7 +1898,7 @@ template <class T, class... Args>
 shared_ptr<T> make_shared (Args&&... args);//相当于调用T类的构造函数，auto baz = std::make_shared<std::pair<int,int>> (30,40);
 ```
 
-## 14.2 *enable_shared_from_this*
+## 15.2 *enable_shared_from_this*
 
 使用智能指针难以避免的场景之一就是需要把在类的成员函数里把当前类的对象作为参数传给其他异步函数，这时候需要在成员函数里获得一个管理*this*指针的shared_ptr，我们可能想要这么做：
 
@@ -1956,23 +1978,23 @@ int main(int argc, char* argv[])
 
 *enable_shared_from_this*中包含一个*weak_ptr*，在初始化*shared_ptr*时，构造函数会检测到这个该类派生于*enable_shared_from_this*，于是将这个*weak_ptr*指向初始化的*shared_ptr*。调用*shared_from_this*，本质上就是*weak_ptr*的一个*lock*操作。
 
-# 15. *STL*容器
+# 16. *STL*容器
 
-## 15.1 顺序容器(*sequence container*)
+## 16.1 顺序容器(*sequence container*)
 
-### 15.1.1 *vector*
+### 16.1.1 *vector*
 
 *vector\<bool\>*为该模板类的特例化，我们在前文中已经介绍过了，不再赘述。
 
-#### 15.1.1.1 数据结构
+#### 16.1.1.1 数据结构
 
 *vector*的底层数据结构是动态数组，因此，*vector*的数据安排以及操作方式与*std::array*十很相似，它们间的唯一差别在于对空间的运用灵活性上。*array*为静态数组，有着静态数组最大的缺点：每次只能分配一定大小的存储空间，当有新元素插入时，要经历 “找到更大的内存空间”->“把数据复制到新空间” ->“销毁旧空间” 三部曲， 对于*std::array*而言，这种空间管理的任务压在使用它的用户身上，用户必须把握好数据的数量，尽量在第一次分配时就给数据分配合理的空间（这有时很难做到），以防止“三部曲”带来的代价，而数据溢出也是静态数组使用者需要注意的问题。而*vector*用户不需要亲自处理空间运用问题。*vector*是动态空间，随着新元素的插入，旧存储空间不够用时，*vector*内部机制会自行扩充空间以容纳新元素，当然，这种空间扩充大部分情况下（几乎是）也逃脱不了“三部曲”，只是不需要用户自己处理，而且*vector*处理得更加安全高效。*vector*的实现技术关键就在于对其大小的控制以及重新配置时数据移动效率。 
 
-#### 15.1.1.2 迭代器类型
+#### 16.1.1.2 迭代器类型
 
 对于*C style*数组，我们使用普通指针就可以对数组进行各种操作。*vector*维护的是一个连续线性空间，与数组一样，所以无论其元素型别为何，普通指针都可以作为*vector*的迭代器而满足所有必要的条件。*vector*所需要的迭代器操作，包括*operator*,*operator->*,*operator++*,*operator--*,*operator+=*,*operator-=*等，普通指针都具有。因此，普通指针即可满足*vector*对迭代器的需求。所以，*vector*提供了*Random Access Iterators*。 
 
-#### 15.1.1.3 内存分配
+#### 16.1.1.3 内存分配
 
 标准库的实现者使用了这样的内存分配策略：以最小的代价连续存储元素。为了使*vector*容器实现快速的内存分配，其实际分配的容量要比当前所需的空间多一些(预留空间)，*vector*容器预留了这些额外的存储区用于存放添加的新元素，于是不必为每个新元素进行一次内存分配。当继续向容器中加入元素导致备用空间被用光（超过了容量*capacity*），此时再加入元素时*vector*的内存管理机制便会扩充容量至两倍，如果两倍容量仍不足，就扩张至足够大的容量。容量扩张必须经历“重新配置、元素移动、释放原空间”这个浩大的工程。按照《*STL*源码剖析》中提供的*vector*源码，*vector*的内存配置原则为：
 
@@ -1981,7 +2003,7 @@ int main(int argc, char* argv[])
 
 当然，*vector*的每种实现都可以自由地选择自己的内存分配策略，分配多少内存取决于其实现方式，不同的库采用不同的分配策略。
 
-#### 15.1.1.4 迭代器失效
+#### 16.1.1.4 迭代器失效
 
 对于迭代器失效的问题，*vector*有三种情况会导致迭代器失效：
 
@@ -1989,13 +2011,15 @@ int main(int argc, char* argv[])
 * 随着元素的insert或者push_back，原来分配的连续内存空间已经不够且无法在原地拓展新的内存空间，整个容器会被*copy*到另外一块内存上，此时指向原来容器元素的所有迭代器通通失效；如果内存空间能满足则插入位置迭代器及其后面的迭代器都失效。
 * 删除元素后，指向被删除元素及其后面的迭代器失效。
 
-#### 15.1.1.5 常用成员函数
+#### 16.1.1.5 常用成员函数
 
 ```cpp
-explicit vector (size_type n, const value_type& val = value_type(), const allocator_type& alloc = allocator_type());
+explicit vector (size_type n, const value_type& val = value_type(), const allocator_type& alloc = allocator_type());//这种构造函数传的是const value_type&，所以会触发拷贝构造函数
 template <class InputIterator> vector (InputIterator first, InputIterator last, const allocator_type& alloc = allocator_type());
 vector (const vector& x);
 vector& operator= (const vector& x);//包含赋值和移动版本
+void push_back (const value_type& val);
+void push_back (value_type&& val);//优选右值引用版本，省略拷贝构造函数
 reference at (size_type n);//以此替换operator[]，at函数会做边界检测
 iterator insert (iterator position, const value_type& val);//在指定位置插入新元素，并将后面的元素往后挪，所以指定迭代器及其后面的迭代器都失效。如果整个vector没有挪到新内存则返回的迭代器和入参迭代器是一个地址，若挪了则返回指向新元素的迭代器。
 void insert (iterator position, size_type n, const value_type& val);
@@ -2011,21 +2035,21 @@ reference front();//返回首元素值的引用
 void reserve (size_type n);//若发生reallocation，所有迭代器失效。和resize的区别是这个不创建新元素，而resize会创建新元素，并且可以直接访问。和shrink_to_fit都是改变capacity的大小，并不改变resize，不会创建新的元素
 ```
 
-### 15.1.2 *list*
+### 16.1.2 *list*
 
-#### 15.1.2.1 数据结构
+#### 16.1.2.1 数据结构
 
 list同样是一个模板类，它底层数据结构为双向循环链表。因此，它支持任意位置*O(1)*的插入/删除操作，不支持快速随机访问。*list*的迭代器具备前移、后移的能力，所以*list*提供的是*Bidirectional iterator*(双向迭代器)。由于采用的是双向迭代器，自然也很方便在指定元素之前插入新节点，所以*list*很正常地提供了*insert()*/*emplace()*操作与*push_back()*/*pop_back()*/*emplace_front()*/*emplace_back()*操作。 
 
-#### 15.1.2.2 内存分配
+#### 16.1.2.2 内存分配
 
 *list*的空间配置策略，自然是像我们普通双向链表那样，有多少元素申请多少内存。它不像*vector*那样需要预留空间供新元素的分配，也不会因找不到连续的空间而引起整个容器的内存迁移。
 
-#### 15.1.2.3 迭代器失效
+#### 16.1.2.3 迭代器失效
 
 插入操作（*insert*）与接合操作（*splice*）都不会造成原有的list迭代器失效。这在*vector*是不成立的，因为*vector*的插入可能引起空间的重新配置，导致原来的迭代器全部失效。*list*的迭代器失效，只会出现在删除的时候，指向删除元素的那个迭代器在删除后失效。  
 
-#### 15.1.2.4 常用成员函数
+#### 16.1.2.4 常用成员函数
 
 ```cpp
 //构造函数同vector类似
@@ -2043,9 +2067,9 @@ template <class Compare>
   void sort (Compare comp);//由于list不能使用std::sort，所以有自己的排序函数，该函数不会导致迭代器失效
 ```
 
-### 15.1.3 *deque*
+### 16.1.3 *deque*
 
-#### 15.1.3.1 数据结构
+#### 16.1.3.1 数据结构
 
  *vector*是单向开口的线性连续空间，*deque*则是一种双向开口的连续数据空间。所谓的双向开口，意思是可以在头尾两端分别做元素的插入和删除操作。当然*vector*也可以在头尾两端进行操作，但是其头部操作效果奇差，所以标准库没有为*vector*提供*push_front*或*pop_front*操作。与*vector*类似，*deque*支持元素的快速随机访问。 
 
@@ -2053,21 +2077,21 @@ template <class Compare>
 
 受到分段连续线性空间的字面影响，我们可能以为*deque*的实现复杂度和*vector*相比差不太多，其实不然。主要因为，既是分段连续线性空间，就必须有中央控制，而为了维持整体连续的假象，数据结构的设计及迭代器前进后退等操作都颇为繁琐。*deque*的实现代码分量远比*vector*或*list*都多得多。
 
-*deque*采用一块所谓的*map*（注意，不是*STL*的*map*容器）作为主控。这里所谓*map*是一小块连续空间，其中每个元素（此处称为一个节点，*node*）都是指针，指向另一段（较大的）连续线性空间，称为缓冲区。缓冲区才是*deque*的储存空间主体。*SGI STL*允许我们指定缓冲区大小，默认值0表示将使用512*bytes*缓冲区。
+*deque*采用一块所谓的*map*（不是*STL*的*map*容器）作为主控。这里所谓*map*是一小块连续空间，其中每个元素（此处称为一个节点，*node*）都是指针，指向另一段（较大的）连续线性空间，称为缓冲区。缓冲区才是*deque*的储存空间主体。*SGI STL*允许我们指定缓冲区大小，默认值0表示将使用512*bytes*缓冲区。
 
-#### 15.1.3.2 迭代器类型
+#### 16.1.3.2 迭代器类型
 
 *deque*的迭代器必须能够指出分段连续空间（亦即缓冲区）在哪里，其次它必须能够判断自己是否已经处于其所在缓冲区的边缘，如果是，一旦前进或后退就必须跳跃至下一个或上一个缓冲区。为了能够正确跳跃，*deque*必须随时掌握管控中心（*map*）。所以在迭代器中需要定义：当前元素的指针，当前元素所在缓冲区的起始指针，当前元素所在缓冲区的尾指针，指向*map*中指向所在缓区地址的指针，分别为*cur*，*first*，*last*，*node*。
 
-#### 15.1.3.3 迭代器失效
+#### 16.1.3.3 迭代器失效
 
-- 在中间插入元素都将使deque的迭代器、指针、引用失效。在deque的中间删除元素将使迭代器、引用、指针失效。跟vector的区别在于在队前或队后插入元素时（push_back(),push_front()）,由于可能缓冲区的空间不够，需要增加map中控器，而中控器的个数也不够，所以新开辟更大的空间来容纳中控器，所以可能会使迭代器失效；但指针、引用仍有效，因为缓冲区已有的元素没有重新分配内存。
+在中间插入元素都将使deque的迭代器、指针、引用失效。在deque的中间删除元素将使迭代器、引用、指针失效。跟vector的区别在于在队前或队后插入元素时（push_back(),push_front()）,由于可能缓冲区的空间不够，需要增加map中控器，而中控器的个数也不够，所以新开辟更大的空间来容纳中控器，所以可能会使迭代器失效；但指针、引用仍有效，因为缓冲区已有的元素没有重新分配内存。
 
-## 15.2 容器适配器(*container adaptor*)
+## 16.2 容器适配器(*container adaptor*)
 
 如果说容器是*STL*中能保存数据的数据类型，那么容器适配器就是*STL*中为了适配容器提供特定接口的数据类型，所以底层是以顺序容器为基础实现的。*C++*提供了三种容器适配器：*stack*，*queue*和*priority_queue*。*stack*和*queue*默认基于*deque*实现，*priority_queue*默认基于*vector*实现。容器适配器不支持任何类型的迭代器，即迭代器不能用于这些类型的容器。
 
-### 15.2.1 *stack*
+### 16.2.1 *stack*
 
 *stack*为了提供LILO的数据结构。常用成员函数为：
 
@@ -2083,7 +2107,7 @@ value_type& top();
 
 我自己测试发现底层容器改成vector会比用default的deque要快。
 
-### 15.2.2 *queue*
+### 16.2.2 *queue*
 
 *queue*为了提供FIFO的数据结构。常用成员函数为：
 
@@ -2098,7 +2122,7 @@ size_type size() const;
 void swap (queue& x) noexcept;
 ```
 
-### 15.2.3 *priority_queue*
+### 16.2.3 *priority_queue*
 
 *priority_queue*为了提供优先队列，数据结构为大根堆，能够常数时间获得最大的元素，插入删除时间复杂度为O(lgn)。常用成员函数为：
 
@@ -2112,11 +2136,11 @@ void swap (priority_queue& x) noexcept;
 const value_type& top() const;
 ```
 
-## 15.3 关联容器(*associative container*)
+## 16.3 关联容器(*associative container*)
 
 关联容器的关联指的是存储的元素的位置是和其值是相关联的，而不是像顺序容器一样是绝对的位置。其存储顺序可分为有序和无序两种，有序的是*map/set*，其内部数据结构为*RBT*；无序的就是*unordered_map/set*，其内部数据结构为*hashmap*。
 
-### 15.3.1 *map/multimap*
+### 16.3.1 *map/multimap*
 
 常用成员函数：
 
@@ -2147,7 +2171,7 @@ map<int, int> mymap{
 */
 ```
 
-### 15.3.2 *set/multiset*
+### 16.3.2 *set/multiset*
 
 set/multiset跟map不同，它通过值来进行排序，所以不能对存储的数据进行随意修改。思考一下，set和map都只能通过迭代器来进行访问，若set能随意修改迭代器对应的值那这个迭代器就失效了，因为值改变了需要重新排序。正因如此，set的迭代器使用operator*返回的类型是const的，就是防止你对其进行修改:
 
@@ -2164,7 +2188,7 @@ gcc下编译错误为assignment of read-only location ‘it.std::_Rb_tree_const_
 
 常用成员函数除*operator[]*外和*map*系列一致。
 
-### 15.3.3 *unordered_map*/*unordered_multimap*
+### 16.3.3 *unordered_map*/*unordered_multimap*
 
 *unordered_map*内部使用*bucket hash*实现的*hashmap*，属于开放地址法的一种，默认构造函数后桶个数初始化为*11*。开放地址法是所有的元素都存放在散列表里，发生地址冲突时，按照某种方法继续探测*Hash*表中其它存储单元，直到找到空位置为止 。除了这种开放地址法我们还有封闭地址的方法，也叫拉链法，即冲突后再节点后面用链表延伸冲突的*key*，也可以改成用二叉树。
 
@@ -2205,15 +2229,15 @@ local_iterator begin ( size_type n );
 const_local_iterator begin ( size_type n ) const;//由于是无序map，所以不能保证是从哪一个元素开始，但是能保证的是从begin到end可以遍历所有的元素
 ```
 
-### 15.3.4 *unordered_set*/*unordered_multiset*
+### 16.3.4 *unordered_set*/*unordered_multiset*
 
 常用成员函数除*operator[]*外和*unordered_map*系列一致。
 
-### 15.3.5迭代器失效
+### 16.3.5迭代器失效
 
 RBT实现的容器的迭代器都属于bidirectional iterator，hashmap实现的容器的迭代器属于forward iterator。map/multimap/set/multiset只有被erase调元素对应的迭代器会失效，其他操作都不会导致迭代器失效；对于unordered系列来说erase会导致对应元素的迭代器失效，insert当且仅当插入时导致rehash（即重新设置bucket个数），那么所有的迭代器都会失效。
 
-## 15.4 迭代器
+## 16.4 迭代器
 
 迭代器分为5种，由一般到特殊(“高级”)可以把它分成五类，如下表所示：
 
@@ -2238,7 +2262,30 @@ template <class RandomAccessIterator, class Compare>
 
 假设有两个算法，f和g，f接受Input iterator类型的参数，而g接受Random-access类型的参数，那么f的作用范围就比g大，因为所有的Forward, Bidirectional和Random-access迭代器都可以作为f的参数，而g只能使用Random-access参数。
 
-### 15.4.1 Output iterator 输出迭代器
+还有一个例子是各类容器都有一个范围构造函数类似于：
+
+```cpp
+template <class InputIterator>
+  vector (InputIterator first, InputIterator last,
+          const allocator_type& alloc = allocator_type());
+template <class InputIterator>
+  list (InputIterator first, InputIterator last,
+         const allocator_type& alloc = allocator_type());
+template <class InputIterator>
+  map (InputIterator first, InputIterator last,
+       const key_compare& comp = key_compare(),
+       const allocator_type& = allocator_type());
+template <class InputIterator>
+  unordered_map ( InputIterator first, InputIterator last,
+                  size_type n = /* see below */,
+                  const hasher& hf = hasher(),
+                  const key_equal& eql = key_equal(),
+                  const allocator_type& alloc = allocator_type() );
+```
+
+这里面的迭代器类型为InputIterator，为最一般的迭代器，所以这些容器的构造函数能传入任意容器的迭代器来进行构造，就是说不同类型的容器之间可进行互相构造，包括传入一般的指针类型。这也体现了泛型编程的优势，将数据结构和接口分离，对于这些范围构造函数来说，传入的迭代器类型只要实现（++）操作即可在构造函数内部遍历从first到last的范围。
+
+### 16.4.1 Output iterator 输出迭代器
 
 | **支持的操作** | **功能描述**                          |
 | :------------- | :------------------------------------ |
@@ -2247,7 +2294,7 @@ template <class RandomAccessIterator, class Compare>
 | iter++         | 向前移动一个位置，返回旧的位置        |
 | TYPE(iter)     | 拷贝构造函数                          |
 
-### 15.4.2 Input iterator 输入迭代器
+### 16.4.2 Input iterator 输入迭代器
 
 一个纯粹的Input iterator 类型的迭代器，只能挨个元素向前只读地访问元素. 典型示例是读取标准键盘输入的迭代器，每个元素只能读取一次，且只能向前, 只能读取，不能修改。
 
@@ -2261,7 +2308,7 @@ template <class RandomAccessIterator, class Compare>
 | iter1 != iter2 | 判不等                                               |
 | TYPE(iter)     | 拷贝构造函数                                         |
 
-### 15.4.3 Forward iterator 前向迭代器
+### 16.4.3 Forward iterator 前向迭代器
 
 Forward iterator 是一种特殊的Input iterator, 它在Input iterator的基础上提供了额外的保证：
 
@@ -2279,7 +2326,7 @@ Forward iterator 是一种特殊的Input iterator, 它在Input iterator的基础
 | TYPE(iter)     | 拷贝构造函数                                         |
 | iter1 = iter2  | 赋值                                                 |
 
-### 15.3.4 Bidirectional iterator 双向迭代器
+### 16.3.4 Bidirectional iterator 双向迭代器
 
 Bidirectional iterator是提供了回头访问能力的Forward iterator, 在Forward iterator支持的操作基础上，它提供了以下两个“回头”操作：
 
@@ -2288,7 +2335,7 @@ Bidirectional iterator是提供了回头访问能力的Forward iterator, 在Forw
 | –iter          | 回头走一步，返回新位置 |
 | iter–          | 回头走一步，返回旧位置 |
 
-### 15.3.5 Random-access iterator 随机访问迭代器
+### 16.3.5 Random-access iterator 随机访问迭代器
 
 Random-access iterator是功能最强大的迭代器类型，在Bidirectional iterator基础上提供了随机访问的功能，因此支持迭代器运算，类比指针运算。
 
@@ -2305,7 +2352,7 @@ Random-access iterator是功能最强大的迭代器类型，在Bidirectional it
 | iter1 > iter2  | iter1比iter2靠后？               |
 | iter1 >= iter2 | iter1不比iter2靠前？             |
 
-# 16. C++11并发编程
+# 17. C++11并发编程
 
  ![Process-thread relationship](https://computing.llnl.gov/tutorials/pthreads/images/thread.gif) 
 
@@ -2313,7 +2360,7 @@ Random-access iterator是功能最强大的迭代器类型，在Bidirectional it
 
 我们首先来介绍一下*pthread*。
 
-## 16.1 *pthread*
+## 17.1 *pthread*
 
 pthread是POSIX的线程标准，定义了创建和操纵线程的一套API。实现POSIX 线程标准的库常被称作**Pthreads**，一般用于Unix-like POSIX 系统，如Linux、Solaris。Linux的pthread实现是*Native POSIX Thread Library* (*NPTL*)。在Linux2.6之前进程是内核调度的实体，在内核中并不能真正支持线程。但是它的确可以通过 `clone()` 系统调用将进程作为可调度的实体。这个调用创建了调用进程（calling process）的一个拷贝，这个拷贝与调用进程共享相同的地址空间。LinuxThreads 项目使用这个调用来完全在用户空间模拟对线程的支持。不幸的是，这种方法有一些缺点，尤其是在信号处理、调度和进程间同步原语方面都存在问题。另外，这个线程模型也不符合 POSIX 的要求。要改进 LinuxThreads，非常明显我们需要内核的支持，并且需要重写线程库。有两个相互竞争的项目开始来满足这些要求。一个包括 IBM 的开发人员的团队开展了 NGPT（Next-Generation POSIX Threads）项目。同时，Red Hat 的一些开发人员开展了 NPTL 项目。NGPT 在 2003 年中期被放弃了，把这个领域完全留给了 NPTL。 
 
@@ -2377,7 +2424,7 @@ int main(void)
 }
 ```
 
-## 16.2 *std::thread*
+## 17.2 *std::thread*
 
 *std::thread*封装了*pthread*的线程管理接口，相对于*pthread*最方便的地方在于不需要将参数打包在一个*void\**中进行参数传入，*std::thread*使用模板函数对多参数进行了打包从而让我们能将参数一个一个的传入。
 
@@ -2436,11 +2483,11 @@ int main()
 }
 ```
 
-## 16.3 *std::mutex*
+## 17.3 *std::mutex*
 
 *std::mutex*互斥锁用来对临界区域加锁（可以理解为值为0或1的semaphore），和自旋锁(*spin lock*)的区别在于mutex是sleep-waiting。就是说当没有获得mutex时，会有上下文切换，将当前线程阻塞加到等待队列中，直到持有mutex的线程释放mutex并唤醒当前线程，这时CPU是空闲的，可以调度别的任务处理；而自旋锁是busy-waiting的，就是说当没有可用的锁时，就一直忙等待并不停的进行锁请求，直到得到这个锁为止，这个过程中CPU始终处于繁忙状态不能处理别的任务。
 
-### 16.3.1 pthread_mutex_t加锁原理
+### 17.3.1 pthread_mutex_t加锁原理
 
 linux平台的std::mutex是pthread_mutex_t封装，我们可以查看pthread_mutex_t源码来看std::mutex的实现，其结构体内容如下：
 
@@ -2472,7 +2519,7 @@ PTHREAD_MUTEX_ERRORCHECK_NP//检错锁，如果同一个线程重复请求同一
 PTHREAD_MUTEX_ADAPTIVE_NP//自适应锁，自旋锁与普通锁的混合。
 ```
 
-而C++11其实只实现了普通锁std::mutex和重入锁std::recursive_mutex，C++17多了shared_mutex（读写锁），自旋锁需要我们自己实现，我们会在16.5章节中使用std::atomic来实现。
+而C++11其实只实现了普通锁std::mutex和重入锁std::recursive_mutex，C++17多了shared_mutex（读写锁），自旋锁需要我们自己实现，我们会在17.5章节中使用std::atomic来实现。
 
 pthread中使用 pthread_mutex_lock接口来对4种锁进行加锁，我们可以看一下其中的操作：
 
@@ -2601,7 +2648,7 @@ __asm __volatile (LLL_EBX_LOAD \
 
 可以看到当发生竞争的时候，会调用SYS_futex系统调用， 调用futex系统调用的futex_wait操作进行排队。因为用户空间并不知道内核的futex队列中是否还有其它锁竞争的任务在等待，所以系统调用阻塞唤醒回到用户空间，对futex尝试上锁，必须以锁竞争状态来上锁，以使自己解锁时，会调用futex_wake。 futex的优点在于只有当处于竞争状态的时候才会调用系统调用陷入内核。
 
-### 16.3.2 常用函数
+### 17.3.2 常用函数
 
 ```cpp
 void lock();//如果当前mutx被其他线程锁定，则该接口会阻塞当前线程直至解锁；如果被同一个线程锁定，则会造成死锁
@@ -2610,9 +2657,9 @@ bool try_lock();//若锁被其他线程占用会返回false，若被自己占用
 void unlock();//If the mutex is not currently locked by the calling thread, it causes undefined behavior.
 ```
 
-### 16.3.3 相关类
+### 17.3.3 相关类
 
- #### 16.3.3.1 lock_guard
+ #### 17.3.3.1 lock_guard
 
 这个接口我们在前文介绍过，通过RAII实现，生成对象时就加锁，在析构时进行解锁，所以锁的生命周期和对象的生命周期一样，使用方式像下面这样：
 
@@ -2625,7 +2672,7 @@ std::mutex mtx;
 
 对象不能复制只能移动。
 
-#### 16.3.3.2 unique_lock
+#### 17.3.3.2 unique_lock
 
 unique_lock和lock_guard类似，默认情况下锁的生命周期也是和对象一样，但是我们可以通过传入不同的参数进行灵活修改：
 
@@ -2666,17 +2713,17 @@ template <class Clock, class Duration>
 bool try_lock_until (const chrono::time_point<Clock,Duration>& abs_time);//一段时间后加锁，加锁成功返回true	
 ```
 
-### 16.3.4 recursive_mutex
+### 17.3.4 recursive_mutex
 
 mutex可以分为递归锁(recursive mutex)和非递归锁(non-recursive mutex)。可递归锁也可称为可重入锁(reentrant mutex)，非递归锁又叫不可重入锁(non-reentrant mutex)。
 
 二者唯一的区别是，同一个线程可以多次获取同一个递归锁，不会产生死锁。而如果一个线程多次获取同一个非递归锁，则会产生死锁。
 
-### 16.3.5 shared_mutex
+### 17.3.5 shared_mutex
 
 这个锁就是我们平时所说的读写锁，线程可以将其设置为独占，在非独占的情况先多个线程可共享。所以有两种加锁方式，在C++17中实现。
 
-## 16.4 *std::condition_variable*
+## 17.4 *std::condition_variable*
 
 条件变量用于阻塞当前线程直至有信号量通知，举个例子来说：
 
@@ -2720,14 +2767,14 @@ int main() {
 
 程序一开始先启动worker线程并获得mutex锁，之后调用std::condition_variable::wait，由于当前ready为false则调用wait()释放mutex锁并阻塞当前线程等待被唤醒。与此同时主线程继续执行，使用lock_guard获得mutex锁，生成数据，将ready置成true，离开大括号作用域后lock_guard析构释放mutex锁并调用std::condition_variable::notify_one()通知wait的线程。此时主线程重新阻塞去竞争获得mutex锁。worker线程被唤醒后加锁，wait函数判断此时ready返回true不再调用wait阻塞当前线程，接着处理完数据之后将processed置true并对mutex进行解锁，最后通知主线程。此时主线程有可能被阻塞在竞争mutex的地方被唤醒并加锁，在wait函数判断processed为true后直接继续执行程序；有可能在wait被唤醒并加锁，重新判断processed返回true后继续运行，最终结束程序。
 
-### 16.4.1 *Lost Wakeup and Spurious Wakeup*
+### 17.4.1 *Lost Wakeup and Spurious Wakeup*
 
 * *Lost Wakeup*是指一个线程的*std::condition_variable::notify_one()*发生在了另外一个线程std::condition_variable::wait()之前，这样调用std::condition_variable::wait()的线程就不会被唤醒
 * *Spurious Wakeup*是指一个调用std::condition_variable::wait()的线程被系统中断(EINTR)唤醒而不是被真正等待的线程唤醒，这是一种虚假的唤醒现象
 
 为了防止这两种情况发生，根据CppCoreGuidelines CP.42: Don't `wait` without a condition，即调用wait函数时一定要加上一个Predicate函数，wait函数当Predicate返回false时才会真正调用wait函数，返回true时并不会去调用wait阻塞等待锁并加锁。
 
-### 16.4.2 常用函数
+### 17.4.2 常用函数
 
 ```cpp
 void notify_all() noexcept;//还有非成员函数void notify_all_at_thread_exit (condition_variable& cond, unique_lock<mutex> lck);
@@ -2744,11 +2791,11 @@ template <class Clock, class Duration, class Predicate>
                         Predicate pred);
 ```
 
-## 16.5 *std::atomic*
+## 17.5 *std::atomic*
 
 std::atomic<T>模板类，生成一个T类型的原子对象，并提供了一系列原子操作函数。其中T是trivially  copyable type满足：要么全部定义了拷贝/移动/赋值函数，要么全部没定义；没有虚成员；基类或其它任何非static成员都是trivally copyable。典型的内置类型bool、int等属于trivally copyable。再如class triviall{public: int x};也是。T能够被memcpy、memcmp函数使用，从而支持compare/exchange系列函数。有一条规则：不要在保护数据中通过用户自定义类型T通过参数指针或引用使得共享数据超出保护的作用域。atomic\<T\>编译器通常会使用一个内部锁保护，而如果用户自定义类型T通过参数指针或引用可能产生死锁。总之限制T可以更利于原子指令。注意某些原子操作可能会失败，比如atomic\<float\>、atomic\<double\>在compare_exchange_strong()时和expected相等但是内置的值表示形式不同于expected，还是返回false，没有原子算术操作针对浮点数;同理一些用户自定义的类型T由于内存的不同表示形式导致memcmp失败，从而使得一些相等的值仍返回false。
 
-### 16.5.1 原子操作原理
+### 17.5.1 原子操作原理
 
 C++11新引入的std::atomic主要是通过硬件的cmpxchgl(CAS,compare and swap)指令实现，linux内核将cmpxchgl封装成函数cmpxchg，实现如下：
 
@@ -2769,7 +2816,7 @@ C++11新引入的std::atomic主要是通过硬件的cmpxchgl(CAS,compare and swa
 
 std::mutex的加锁过程其实也是有cmpxchg参与，只不过当发生竞争的时候会陷入内核进行等待，这时候性能会比较低，所以能用原子操作的尽量使用原子操作。
 
-### 16.5.2 ABA问题
+### 17.5.2 ABA问题
 
 CAS在执行过程中有可能会因为ABA问题导致结果错误，我们通过atomic实现一个stack来介绍什么是ABA问题：
 
@@ -2811,7 +2858,7 @@ struct LockFreeStackT
 
 假设现有两条线程，栈为A->B，此时线程1对栈进行pop操作，在CAS之前CPU切换去处理线程2。线程2此时连pop两次，将A和B都pop出来，又进行push操作，由于操作系统很可能会分配刚刚释放的内存，所以重新new的数据可能就是刚刚释放地址。此时CPU切到线程1，线程1进行CAS判断此时的head仍然是A，所以将A pop出来将B这个已经释放的内存设为栈顶。解决ABA问题的办法无非就是通过打标签的方式给每个节点进行打标签，而不是通过地址进行判断。
 
-### 16.5.3 常用函数
+### 17.5.3 常用函数
 
 ```cpp
 bool is_lock_free() const volatile;//判断atomic<T>中的T对象是否为lock free的，若是返回true。lock free(锁无关)指多个线程并发访问T不会出现data race，任何线程在任何时刻都可以不受限制的访问T
@@ -2838,7 +2885,7 @@ bool compare_exchange_strong(T &, T, memory_order = memory_order_seq_cst) volati
 bool compare_exchange_strong(T &, T, memory_order = memory_order_seq_cst);
 ```
 
-### 16.5.4 自旋锁实现
+### 17.5.4 自旋锁实现
 
 通过原子变量，我们可以自行实现标准库中没有的自旋锁：
 
@@ -2861,9 +2908,9 @@ public:
 };
 ```
 
-从网上的性能测试来看所有平台的自旋锁性能都无限接近无锁实现，并且使用方式和互斥锁几乎没有差别，但是仍然看场景，场景我们在16.3讨论过。
+从网上的性能测试来看所有平台的自旋锁性能都无限接近无锁实现，并且使用方式和互斥锁几乎没有差别，但是仍然看场景，场景我们在17.3讨论过。
 
-## 16.6 *std::async*
+## 17.6 *std::async*
 
 *std::async()*是一个接受回调(函数或函数对象)作为参数的函数模板，并有可能异步执行它们。*std::async*返回一个*std::future*，它存储由*std::async()*执行的函数对象返回的值。函数的参数可以作为函数指针参数后面的参数传递给*std::async()*。
 
@@ -2872,7 +2919,7 @@ std::launch::async：保证异步行为，即传递函数将在单独的线程�
 std::launch::deferred：当其他线程的future调用get()或者wait()才执行该函数
 std::launch::async | std::launch::deferred：默认行为。有了这个启动策略，它可以异步运行或不运行，这取决于系统的负载，但我们无法控制它。
 
-## 16.7 *std::promise*
+## 17.7 *std::promise*
 
 promise对象可以通过set_value保存某一类型 T 的值，该值可被 future 对象通过get阻塞读取（可能在另外一个线程中），因此 promise 也提供了一种线程同步的手段。在 promise 对象构造时可以和一个共享状态（通常是std::future，通过get_future）相关联，并可以在相关联的共享状态(std::future)上保存一个类型为 T 的值。
 
@@ -2925,7 +2972,7 @@ void promise<R&>::set_value_at_thread_exit (R& val);// when T is a reference typ
 void promise<void>::set_value_at_thread_exit (void);// when T is void
 ```
 
-## 16.8 *std::future*
+## 17.8 *std::future*
 
 std::future 可以用来获取异步任务的结果，因此可以把它当成一种简单的线程间同步的手段。std::future 通常由某个Provider创建，你可以把Provider想象成一个异步任务的提供者，Provider 在某个线程中设置共享状态的值，与该shared state相关联的std::future对象调用get（通常在另外一个线程中）获取该值，如果共享状态的标志不为 ready，则调用 std::future::get 会阻塞当前的调用者，直到 Provider 设置了共享状态的值（此时共享状态的标志变为 ready），std::future::get 返回异步任务的值或异常（如果发生了异常）。
 
@@ -2935,7 +2982,7 @@ std::future 可以用来获取异步任务的结果，因此可以把它当成�
 - std::promise::get_future，get_future为 promise类的成员函数。
 - std::packaged_task::get_future，此时get_future为packaged_task的成员函数。
 
-std::shared_future与std::future类似，但是std::shared_future可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)，这样就可以实现多个线程等待一个线程结果的场景。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看16.7。
+std::shared_future与std::future类似，但是std::shared_future可以拷贝、多个std::shared_future可以共享某个共享状态的最终结果(即共享状态的某个值或者异常)，这样就可以实现多个线程等待一个线程结果的场景。shared_future可以通过某个std::future对象隐式转换（参见std::shared_future的构造函数），或者通过std::future::share()显示转换，无论哪种转换，被转换的那个 std::future对象都会变为not-valid。一个有效的std::future对象只能通过std::async()，std::future::get_future或者std::packaged_task::get_future来初始化，可通过valid()函数来判断一个future对象是否valid。具体例子可以看17.7。
 
 常用函数有：
 
@@ -2952,15 +2999,15 @@ template <class Clock, class Duration>
 future_status wait_until (const chrono::time_point<Clock,Duration>& abs_time) const;//等待直到一个特定时间点，若等待时间点在当前之前则返回future_status::timeout
 ```
 
-# 17. 并行编程
+# 18. 并行编程
 
-## 17.1 指令集并行
+## 18.1 指令集并行
 
 CPU流水线相关
 
-## 17.2 数据级并行
+## 18.2 数据级并行
 
-### 17.2.1 *SIMD(Single instruction multidata)*
+### 18.2.1 *SIMD(Single instruction multidata)*
 
 SIMD即单指令流多数据流，是一种采用一个控制器来控制多个处理器，同时对一组数据（又称“数据向量”）中的每一个分别执行相同的操作从而实现空间上的并行性的技术。简单来说就是一个指令能够同时处理多个数据。
 
@@ -2970,7 +3017,7 @@ intel在1999年又推出了全面覆盖MMX的SSE(*Streaming SIMD Extensions*， 
 
 AVX引入了16个256位寄存器(YMM0至YMM15)，AVX的256位寄存器和SSE的128位寄存器存在着相互重叠的关系(XMM寄存器为YMM寄存器的低位)，所以最好不要混用AVX与SSE指令集，否在会导致transition penalty（过渡处罚）。
 
-### 17.2.2 *SIMT(Single instruction multithread)*
+### 18.2.2 *SIMT(Single instruction multithread)*
 
 首先厘清概念：
 
@@ -2991,17 +3038,17 @@ AVX引入了16个256位寄存器(YMM0至YMM15)，AVX的256位寄存器和SSE的1
 1. 足够多的线程，可以获得足够高的吞吐率
 2. 一方面延迟是竭力避免的，另一方面寄存器的价格是可以接受的。
 
-## 17.3 线程级并行
+## 18.3 线程级并行
 
-### 17.3.1 *SMT(Simultaneous multithreading)*
+### 18.3.1 *SMT(Simultaneous multithreading)*
 
 我们前面介绍过pthread，一个多线程库，这是软件层面的概念。如果多个线程想运行在同一个core上我们只能让任务分时服用，而硬件上如果一个CPU支持SMT，就是在能让多个线程共用一个CPU，但是分别用CPU上的不同的资源。CPU在执行一条机器指令时，并不会完全地利用所有的CPU资源，而且实际上，是有大量资源被闲置着的。超线程技术允许两个线程同时不冲突地使用CPU中的资源。比如一条整数运算指令只会用到整数运算单元，此时浮点运算单元就空闲了，若使用了超线程技术，且另一个线程刚好此时要执行一个浮点运算指令，CPU就允许属于两个不同线程的整数运算指令和浮点运算指令同时执行，这是真的并行。超线程的原理主要是两个逻辑核心各自有一套自己的线程状态存储设施：控制寄存器，通用寄存器。从而调度器可以同时调度两个线程，这个是关键。最终这么做的目的是充分利用执行引擎。
 
-### 17.3.2 OpenMP
+### 18.3.2 OpenMP
 
-## 17.4 进程级并行
+## 18.4 进程级并行
 
-### 17.4.1 MPI
+### 18.4.1 MPI
 
 MPI是一个跨语言的通讯协议，用于编写进程级并行程序，包括协议和和语义说明，他们指明其如何在各种实现中发挥其特性。MPI的目标是高性能，大规模性，和可移植性。一般用于HPC等大型计算集群场景。
 
@@ -3011,7 +3058,7 @@ MPI有很多的实现，包括OpenMPI/IntelMPI/MPICH2/MVAPICH等。Nvidia的NCCL
 
 除了用于HPC之外在当前深度学习训练场景下也常常用到MPI。Inspur公司就基于caffe实现了MPI版本来提升集群训练的性能。当然在当前NCCL已经兼容了MPI接口并且还支持GPUDirect的情况下也就不需要再使用其他版本的MPI了。除了caffe之外在tensorflow中做集群通信的主要是使用的自家的gRPC（当然GPU之间通信肯定是使用的NCCL），gRPC当然也能基于RDMA，但是由于gRPC本身层级过高，基于RDMA的性能并不如MPI，所以科大目前有团队把tensorflow改成了MPI版，但并不是主流。
 
-# 18. *CPU*
+# 19. *CPU*
 
 CPU执行计算任务时都需要遵从一定的规范，程序在被执行前都需要先翻译为CPU可以理解的语言。这种规范或语言就是指令集（ISA，Instruction Set Architecture）。程序被按照某种指令集的规范翻译为CPU可识别的底层代码的过程叫做编译（compile）。x86、ARM v8、MIPS都是指令集的代号。指令集可以被扩展，如x86增加64位支持就有了x86-64。厂商开发兼容某种指令集的CPU需要指令集专利持有者授权，典型例子如Intel授权AMD，使后者可以开发兼容x86指令集的CPU。
 
