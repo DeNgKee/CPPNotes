@@ -2999,6 +2999,96 @@ template <class Clock, class Duration>
 future_status wait_until (const chrono::time_point<Clock,Duration>& abs_time) const;//等待直到一个特定时间点，若等待时间点在当前之前则返回future_status::timeout
 ```
 
+## 17.9 线程池
+
+通过上述介绍的C++11的并发编程库我们可以实现一个简单的线程池，只需要用到mutex和condition_variable：
+
+```cpp
+#include <iostream>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
+#include <queue>
+#include <thread>
+
+class ThreadPool {
+public:
+    explicit ThreadPool(size_t threadCount)
+        : data_(std::make_shared<data>()) {
+        for (size_t i = 0; i < threadCount; ++i) {
+            std::thread([data = data_] {
+                std::unique_lock<std::mutex> lk(data->mtx);
+                for (;;) {
+                    if (!data->tasks.empty()) {
+                        auto current = std::move(data->tasks.front());
+                        data->tasks.pop();
+                        lk.unlock();
+                        current();
+                        lk.lock();
+                    }
+                    else if (data->isShutdown) {
+                        break;
+                    }
+                    else {
+                        data->cond.wait(lk);
+                    }
+                }
+                }).detach();
+        }
+    }
+
+    ThreadPool() = default;
+    ThreadPool(ThreadPool&&) = default;
+
+    ~ThreadPool() {
+        if ((bool)data_) {
+            {
+                std::lock_guard<std::mutex> lk(data_->mtx);
+                data_->isShutdown = true;
+            }
+            data_->cond.notify_all();
+        }
+    }
+
+    template <class F>
+    void execute(F&& task) {
+        {
+            std::lock_guard<std::mutex> lk(data_->mtx);
+            data_->tasks.emplace(std::forward<F>(task));
+        }
+        data_->cond.notify_one();
+    }
+
+private:
+    struct data {
+        std::mutex mtx;
+        std::condition_variable cond;
+        bool isShutdown = false;
+        std::queue<std::function<void()>> tasks;
+    };
+    std::shared_ptr<data> data_;
+};
+int main()
+{
+    ThreadPool tp(10);
+    tp.execute([]() {
+        for (int i = 0; i < 20; ++i) {
+            std::cout << "i:" << i << std::endl;
+        }
+    });
+    tp.execute([]() {
+        for (int i = 0; i < 20; ++i) {
+            std::cout << "i:" << i << std::endl;
+        }
+    });
+    system("pause");
+}
+```
+
+在ThreadPool类的构造函数中我们会起threadCount个线程并进入一个死循环中，每一个线程都通过条件变量等待被唤醒。当ThreadPool的对象调用execute接口并传入函数指针之后将函数指针push进任务队列中，接着唤醒一个线程。被随机唤醒的线程从任务队列中pop出一个函数任务开始调用。
+
+这个线程池可能还比较简单，只能执行无参数无返回的任务，在实际生产中可能难以适用，但是通过简单的修改我们可以通过多态加闭包的方法实现不同函数的调用。
+
 # 18. 并行编程
 
 ## 18.1 指令集并行
